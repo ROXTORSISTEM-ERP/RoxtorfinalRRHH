@@ -1,0 +1,19 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[functions]
+  # Esta es la sintaxis exacta que te pidió el error:
+  [functions.node_bundle]
+    external_node_modules = ["@google/generative-ai", "@supabase/supabase-js", "express", "serverless-http"]
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/server/api/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200200
