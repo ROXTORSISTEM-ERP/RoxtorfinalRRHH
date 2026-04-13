@@ -271,13 +271,19 @@ async function startServer() {
   });
 
   // Vite middleware para desarrollo
-  if (process.env.NODE_ENV !== "production") {
-    const { createServer: createViteServer } = await import("vite");
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
+  if (process.env.NODE_ENV !== "production" && !process.env.NETLIFY && !process.env.VERCEL) {
+    try {
+      // Usamos un string para el import para que el bundler no lo analice estáticamente
+      const vitePkg = "vite";
+      const { createServer: createViteServer } = await import(vitePkg);
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: "spa",
+      });
+      app.use(vite.middlewares);
+    } catch (e) {
+      console.warn("⚠️ No se pudo cargar Vite, saltando...");
+    }
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));

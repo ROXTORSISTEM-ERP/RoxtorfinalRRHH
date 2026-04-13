@@ -5,7 +5,7 @@
 
 [functions]
   [functions.node_bundle]
-    external_node_modules = ["@google/generative-ai", "@supabase/supabase-js", "express", "serverless-http"]
+    external_node_modules = ["@google/generative-ai", "@supabase/supabase-js", "express", "serverless-http", "vite"]
 
 [[redirects]]
   from = "/api/*"
