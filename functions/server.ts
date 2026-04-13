@@ -1,2 +1,1 @@
-import { handler } from "../server";
-export { handler };
+export { handler } from "../../server";
