@@ -20,6 +20,10 @@ async function startServer() {
 
   app.use(express.json({ limit: '50mb' }));
 
+  app.get("/api", (req, res) => {
+    res.json({ message: "Roxtor API Root", endpoints: ["/health", "/ai/test", "/ai/analyze"] });
+  });
+
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
   });
@@ -305,8 +309,7 @@ async function startServer() {
 const appPromise = startServer();
 
 // Exportar para Vercel/Netlify
-export const handler = async (event: any, context: any) => {
+export const handler = serverless(async (req: any, res: any) => {
   const app = await appPromise;
-  const serverlessHandler = serverless(app);
-  return serverlessHandler(event, context);
-};
+  return app(req, res);
+});
