@@ -1,9 +1,9 @@
 [build]
   command = "npm run build"
   publish = "dist"
+  functions = "functions"
 
 [functions]
-  # Esta es la sintaxis exacta que te pidió el error:
   [functions.node_bundle]
     external_node_modules = ["@google/generative-ai", "@supabase/supabase-js", "express", "serverless-http"]
 
@@ -16,4 +16,4 @@
 [[redirects]]
   from = "/*"
   to = "/index.html"
-  status = 200200
+  status = 200

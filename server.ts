@@ -286,9 +286,12 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
+  // Solo escuchar si NO estamos en Netlify/Vercel
+  if (!process.env.NETLIFY && !process.env.VERCEL) {
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+    });
+  }
 
   return app;
 }
@@ -296,7 +299,8 @@ async function startServer() {
 const appPromise = startServer();
 
 // Exportar para Vercel/Netlify
-export const handler = async (req: any, res: any) => {
+export const handler = async (event: any, context: any) => {
   const app = await appPromise;
-  return serverless(app)(req, res);
+  const serverlessHandler = serverless(app);
+  return serverlessHandler(event, context);
 };
