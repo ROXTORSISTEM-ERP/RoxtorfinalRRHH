@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { GoogleGenerativeAI } from '@google/generative-ai'; // SDK Correcto
 import { Product, AppSettings } from '../types';
 import { ROXTOR_SYSTEM_INSTRUCTIONS } from '../constants/systemInstructions';
-import { getGeminiApiKey } from '../utils/ai';
+import { callRoxtorAI } from '../utils/ai';
 import { 
   Mic, 
   MicOff, 
@@ -35,77 +34,10 @@ const VoiceAssistant: React.FC<Props> = ({ products, settings }) => {
 
   const startSession = async () => {
     if (isActive) return;
-    const apiKey = getGeminiApiKey();
-    if (!apiKey || apiKey === "PROTECTED_BY_ROXTOR_SERVER") { 
-      setError("La API_KEY de Gemini no está disponible en el cliente por seguridad. Las funciones de voz en tiempo real requieren configuración avanzada o proxy."); 
-      setIsConnecting(false);
-      return; 
-    }
-
-    setIsConnecting(true);
-    setError(null);
-
-    try {
-      const catalogInfo = products.map(p => `- ${p.name}: $${p.priceRetail}`).join('\n');
-      
-      const systemInstruction = `
-        ${ROXTOR_SYSTEM_INSTRUCTIONS}
-        INSTRUCCIONES VOZIFY:
-        Eres la voz de ${settings.businessName}. Eslogan: "${settings.slogan}".
-        Tono: ${settings.preferredTone}.
-        Reglas: 50% abono siempre. Precios: ${catalogInfo}.
-        Responde breve, como nota de voz de WhatsApp.
-      `;
-
-      // URL del WebSocket para Gemini Multimodal Live API
-      const url = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BiDiGenerateContent?key=${apiKey}`;
-      const socket = new WebSocket(url);
-      socketRef.current = socket;
-
-      socket.onopen = () => {
-        // Enviar configuración inicial
-        const setup = {
-          setup: {
-            model: "models/gemini-2.0-flash-exp", // Versión estable para Live
-            generation_config: {
-              response_modalities: ["AUDIO"],
-              speech_config: {
-                voice_config: { prebuilt_voice_config: { voice_name: "Aoide" } }
-              }
-            },
-            system_instruction: { parts: [{ text: systemInstruction }] }
-          }
-        };
-        socket.send(JSON.stringify(setup));
-        startAudioCapture();
-      };
-
-      socket.onmessage = async (event) => {
-        const response = JSON.parse(event.data);
-        
-        if (response.serverContent?.modelTurn?.parts) {
-          const part = response.serverContent.modelTurn.parts[0];
-          if (part.inlineData) {
-            playAudioChunk(part.inlineData.data);
-          }
-          if (part.text) {
-            // Actualizar transcripción de la IA
-            console.log("AI Text:", part.text);
-          }
-        }
-
-        if (response.serverContent?.turnComplete) {
-          setIsAiSpeaking(false);
-        }
-      };
-
-      socket.onerror = () => setError("Error de conexión con el servidor de IA.");
-      socket.onclose = () => stopSession();
-
-    } catch (err) {
-      setError("No se pudo acceder al micrófono.");
-      setIsConnecting(false);
-    }
+    
+    setError("La API_KEY de Gemini no está disponible en el cliente por seguridad. Las funciones de voz en tiempo real requieren un proxy de WebSockets en el servidor."); 
+    setIsConnecting(false);
+    return; 
   };
 
   const startAudioCapture = async () => {
@@ -193,7 +125,7 @@ const VoiceAssistant: React.FC<Props> = ({ products, settings }) => {
            </div>
            {isAiSpeaking && (
               <div className="flex gap-1.5 h-8 items-center">
-                  {[1,2,3,4,5,6].map(i => <div key={i} className="w-1.5 bg-emerald-500 rounded-full animate-bounce" style={{ height: `${20 + Math.random()*60}%`, animationDelay: `${i*0.1}s` }} />)}
+                  {[1,2,3,4,5,6].map(i => <div key={`voice-bar-${i}`} className="w-1.5 bg-emerald-500 rounded-full animate-bounce" style={{ height: `${20 + Math.random()*60}%`, animationDelay: `${i*0.1}s` }} />)}
               </div>
            )}
         </div>

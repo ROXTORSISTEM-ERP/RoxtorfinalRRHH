@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef } from 'react';
+import { Agent, AppSettings, PayrollPayment } from '../types';
 import { 
   Users, 
   FileText, 
@@ -17,12 +18,19 @@ import {
   Loader2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Agent, AppSettings, PayrollPayment } from '../types';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
 import { supabase } from '../utils/supabase';
+import { 
+  calculateSeniority, 
+  calculatePayrollDetails, 
+  calculateLiquidationDetails, 
+  calculateVacationDetails,
+  getWeeklyAttendance
+} from '../utils/payrollCalculations';
+import PayrollReceipt from './PayrollReceipt';
 
 interface Props {
   agents: Agent[];
@@ -39,9 +47,18 @@ const RRHH: React.FC<Props> = ({ agents, onUpdateAgent, settings, payroll }) => 
   const [tempEntryDate, setTempEntryDate] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [newPieceWork, setNewPieceWork] = useState({ description: '', quantity: 0, unitPriceUsd: 0 });
+  const [liquidationFormat, setLiquidationFormat] = useState<'A' | 'B' | 'C'>('A');
+  const [showVacationPreview, setShowVacationPreview] = useState(false);
   const contractRef = useRef<HTMLDivElement>(null);
   const payStubRef = useRef<HTMLDivElement>(null);
   const liquidationRef = useRef<HTMLDivElement>(null);
+  const vacationRef = useRef<HTMLDivElement>(null);
+
+  const fiscalData = {
+    name: "Inversiones Roxtor, C.A",
+    rif: "J-40295973-7",
+    address: "Ciudad Guayana, Estado Bolívar"
+  };
 
   const selectedAgent = useMemo(() => 
     agents.find(a => a.id === selectedAgentId), 
@@ -58,89 +75,7 @@ const RRHH: React.FC<Props> = ({ agents, onUpdateAgent, settings, payroll }) => 
   );
 
   // --- LÓGICA DE CÁLCULOS ---
-
-  const calculateSeniority = (entryDate?: string) => {
-    if (!entryDate) return { years: 0, months: 0, days: 0 };
-    const start = new Date(entryDate);
-    const end = new Date();
-    let years = end.getFullYear() - start.getFullYear();
-    let months = end.getMonth() - start.getMonth();
-    let days = end.getDate() - start.getDate();
-
-    if (days < 0) {
-      months -= 1;
-      days += 30;
-    }
-    if (months < 0) {
-      years -= 1;
-      months += 12;
-    }
-    return { years, months, days };
-  };
-
-  const calculateAttendanceStats = (agent: Agent) => {
-    if (!agent.attendance) return { present: 0, absent: 0, late: 0, totalHours: 0 };
-    
-    let present = 0;
-    let absent = 0;
-    let late = 0;
-    let totalHours = 0;
-
-    agent.attendance.forEach(record => {
-      if (record.status === 'presente') present++;
-      else if (record.status === 'ausente') absent++;
-      else if (record.status === 'tarde') late++;
-
-      // Cálculo de horas (asumiendo jornada de 8h si está presente)
-      if (record.status === 'presente' || record.status === 'tarde') {
-        totalHours += 8; 
-      }
-    });
-
-    return { present, absent, late, totalHours };
-  };
-
-  const calculateVacations = (agent: Agent) => {
-    const baseSalary = agent.baseSalaryBs || 130;
-    const bonusUsd = agent.complementaryBonusUsd || 0;
-    
-    const weeklyBaseBs = baseSalary / 4;
-    const weeklyBonusUsd = bonusUsd / 4;
-
-    return {
-      totalWeeks: 2,
-      decemberPayment: {
-        bs: weeklyBaseBs * 2, // 1 sueldo + 1 aguinaldo
-        usd: weeklyBonusUsd * 2
-      },
-      annualWeekPayment: {
-        bs: weeklyBaseBs,
-        usd: weeklyBonusUsd
-      },
-      totalAnnualBs: weeklyBaseBs * 3, // 2 semanas disfrute + 1 aguinaldo
-      totalAnnualUsd: weeklyBonusUsd * 3
-    };
-  };
-
-  const calculateLiquidation = (agent: Agent) => {
-    const seniority = calculateSeniority(agent.entryDate);
-    const baseSalary = agent.baseSalaryBs || 130;
-    const bonusUsd = agent.complementaryBonusUsd || 0;
-    
-    // Cálculo simplificado basado en LOTTT (ejemplo)
-    // 30 días de salario por año de servicio
-    const totalMonths = seniority.years * 12 + seniority.months;
-    const dailyBaseBs = baseSalary / 30;
-    const dailyBonusUsd = bonusUsd / 30;
-
-    const daysProvision = totalMonths * 2.5; // 30 días al año / 12 meses = 2.5 días por mes
-
-    return {
-      daysProvision,
-      totalBs: daysProvision * dailyBaseBs,
-      totalUsd: daysProvision * dailyBonusUsd
-    };
-  };
+  // Se utilizan las funciones importadas de payrollCalculations.ts
 
   const generateContractPDF = async () => {
     if (!contractRef.current || !selectedAgent) return;
@@ -180,25 +115,49 @@ const RRHH: React.FC<Props> = ({ agents, onUpdateAgent, settings, payroll }) => 
 
   const generatePayStubPDF = async () => {
     if (!payStubRef.current || !selectedAgent) return;
-    const canvas = await html2canvas(payStubRef.current, { scale: 2 });
+    const canvas = await html2canvas(payStubRef.current, { 
+      scale: 2,
+      useCORS: true,
+      backgroundColor: '#ffffff'
+    });
     const imgData = canvas.toDataURL('image/png');
     // Media Carta: 139.7 x 215.9 mm
     const pdf = new jsPDF('p', 'mm', [139.7, 215.9]);
     const pdfWidth = pdf.internal.pageSize.getWidth();
     const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
     pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-    pdf.save(`Recibo_${selectedAgent.name}_${format(new Date(), 'yyyy-MM-dd')}.pdf`);
+    pdf.save(`Recibo_Roxtor_${selectedAgent.name}_${format(new Date(), 'yyyy-MM-dd')}.pdf`);
   };
 
   const generateLiquidationPDF = async () => {
     if (!liquidationRef.current || !selectedAgent) return;
-    const canvas = await html2canvas(liquidationRef.current, { scale: 2 });
+    const canvas = await html2canvas(liquidationRef.current, { 
+      scale: 2,
+      useCORS: true,
+      backgroundColor: '#ffffff'
+    });
+    const imgData = canvas.toDataURL('image/png');
+    // Media Carta: 139.7 x 215.9 mm
+    const pdf = new jsPDF('p', 'mm', [139.7, 215.9]);
+    const pdfWidth = pdf.internal.pageSize.getWidth();
+    const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+    pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+    pdf.save(`Liquidacion_${liquidationFormat}_${selectedAgent.name}.pdf`);
+  };
+
+  const generateVacationPDF = async () => {
+    if (!vacationRef.current || !selectedAgent) return;
+    const canvas = await html2canvas(vacationRef.current, { 
+      scale: 2,
+      useCORS: true,
+      backgroundColor: '#ffffff'
+    });
     const imgData = canvas.toDataURL('image/png');
     const pdf = new jsPDF('p', 'mm', [139.7, 215.9]);
     const pdfWidth = pdf.internal.pageSize.getWidth();
     const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
     pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-    pdf.save(`Liquidacion_${selectedAgent.name}.pdf`);
+    pdf.save(`Recibo_Vacaciones_${selectedAgent.name}.pdf`);
   };
 
   const handleSaveEntryDate = () => {
@@ -361,9 +320,20 @@ const RRHH: React.FC<Props> = ({ agents, onUpdateAgent, settings, payroll }) => 
                 {activeTab === 'staff' && (
                   <div className="grid grid-cols-2 gap-6">
                     <div className="bg-[#111] border border-white/10 rounded-2xl p-6 space-y-4">
-                      <h3 className="text-sm font-black uppercase tracking-widest text-blue-500 flex items-center gap-2">
-                        <Briefcase className="w-4 h-4" /> Datos Laborales
-                      </h3>
+                      <div className="flex justify-between items-center">
+                        <h3 className="text-sm font-black uppercase tracking-widest text-blue-500 flex items-center gap-2">
+                          <Briefcase className="w-4 h-4" /> Datos Laborales
+                        </h3>
+                        <button 
+                          onClick={() => {
+                            const newDate = prompt('Nueva fecha de ingreso (YYYY-MM-DD):', selectedAgent.entryDate || '');
+                            if (newDate) onUpdateAgent({ ...selectedAgent, entryDate: newDate });
+                          }}
+                          className="text-[8px] font-black uppercase bg-blue-600/20 text-blue-400 px-2 py-1 rounded border border-blue-600/30 hover:bg-blue-600/30 transition-all"
+                        >
+                          Editar Fecha
+                        </button>
+                      </div>
                       <div className="space-y-3">
                         <div className="flex justify-between p-3 bg-black/30 rounded-xl border border-white/5">
                           <span className="text-slate-400 text-xs font-bold uppercase">Sueldo Base (Bs)</span>
@@ -410,30 +380,22 @@ const RRHH: React.FC<Props> = ({ agents, onUpdateAgent, settings, payroll }) => 
                         <Clock className="w-4 h-4" /> Control de Asistencia
                       </h3>
                       {(() => {
-                        const stats = calculateAttendanceStats(selectedAgent);
+                        const { totalAbsences, totalDelayMinutes } = getWeeklyAttendance(selectedAgent);
                         return (
                           <div className="space-y-3">
-                            <div className="grid grid-cols-3 gap-2">
-                              <div className="bg-green-600/10 p-2 rounded-lg border border-green-600/20 text-center">
-                                <p className="text-lg font-black text-green-400">{stats.present}</p>
-                                <p className="text-[8px] text-slate-500 font-bold uppercase">Presente</p>
-                              </div>
+                            <div className="grid grid-cols-2 gap-2">
                               <div className="bg-red-600/10 p-2 rounded-lg border border-red-600/20 text-center">
-                                <p className="text-lg font-black text-red-400">{stats.absent}</p>
-                                <p className="text-[8px] text-slate-500 font-bold uppercase">Ausente</p>
+                                <p className="text-lg font-black text-red-400">{totalAbsences}</p>
+                                <p className="text-[8px] text-slate-500 font-bold uppercase">Ausencias (Semana)</p>
                               </div>
                               <div className="bg-yellow-600/10 p-2 rounded-lg border border-yellow-600/20 text-center">
-                                <p className="text-lg font-black text-yellow-400">{stats.late}</p>
-                                <p className="text-[8px] text-slate-500 font-bold uppercase">Tarde</p>
+                                <p className="text-lg font-black text-yellow-400">{totalDelayMinutes}</p>
+                                <p className="text-[8px] text-slate-500 font-bold uppercase">Min. Retraso</p>
                               </div>
                             </div>
                             <div className="flex justify-between p-3 bg-black/30 rounded-xl border border-white/5">
                               <span className="text-slate-400 text-xs font-bold uppercase">Precio por Hora</span>
                               <span className="font-mono font-bold text-blue-400">{selectedAgent.hourlyRateUsd || 0} $/h</span>
-                            </div>
-                            <div className="flex justify-between p-3 bg-black/30 rounded-xl border border-white/5">
-                              <span className="text-slate-400 text-xs font-bold uppercase">Total Horas Mes</span>
-                              <span className="font-mono font-bold">{stats.totalHours} h</span>
                             </div>
                           </div>
                         );
@@ -577,7 +539,7 @@ const RRHH: React.FC<Props> = ({ agents, onUpdateAgent, settings, payroll }) => 
                     <div className="flex justify-end">
                       <button 
                         onClick={generatePayStubPDF}
-                        className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 rounded-xl font-black uppercase italic text-[10px] transition-all"
+                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-black uppercase italic text-[10px] transition-all shadow-lg shadow-blue-600/20"
                       >
                         <Printer className="w-4 h-4" /> Imprimir Recibo Semanal (Media Carta)
                       </button>
@@ -586,27 +548,116 @@ const RRHH: React.FC<Props> = ({ agents, onUpdateAgent, settings, payroll }) => 
                     <div className="bg-blue-600/10 border border-blue-600/20 rounded-2xl p-6 flex items-start gap-4">
                       <AlertCircle className="w-6 h-6 text-blue-500 shrink-0 mt-1" />
                       <div>
-                        <h4 className="font-black uppercase italic text-blue-400">Cálculo de Liquidación Proyectada</h4>
-                        <p className="text-sm text-slate-400">Basado en la LOTTT (30 días de salario integral por año de servicio). Los montos son referenciales.</p>
+                        <h4 className="font-black uppercase italic text-blue-400">Módulo de Liquidación con Triple Formato</h4>
+                        <p className="text-sm text-slate-400">Elige el formato de cálculo para la previsualización y exportación.</p>
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-6" ref={liquidationRef}>
-                      {(() => {
-                        const liq = calculateLiquidation(selectedAgent);
+                    <div className="flex gap-2 bg-black/40 p-1 rounded-xl border border-white/5 w-fit">
+                      {[
+                        { id: 'A', label: 'Formato A (Legal)' },
+                        { id: 'B', label: 'Formato B (Gestión)' },
+                        { id: 'C', label: 'Formato C (Mixto)' }
+                      ].map(f => (
+                        <button
+                          key={f.id}
+                          onClick={() => setLiquidationFormat(f.id as any)}
+                          className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase transition-all ${
+                            liquidationFormat === f.id 
+                              ? 'bg-blue-600 text-white' 
+                              : 'text-slate-400 hover:bg-white/5'
+                          }`}
+                        >
+                          {f.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="bg-white text-black p-8 rounded-sm shadow-2xl overflow-hidden min-h-[215.9mm] w-[139.7mm] mx-auto" ref={liquidationRef}>
+                      {selectedAgent && (() => {
+                        const liq = calculateLiquidationDetails(selectedAgent, settings);
                         return (
-                          <>
-                            <div className="bg-[#111] border border-white/10 rounded-2xl p-8 text-center space-y-2">
-                              <p className="text-slate-500 text-xs font-black uppercase tracking-widest">Total en Bolívares (Base)</p>
-                              <p className="text-5xl font-black italic tracking-tighter">{liq.totalBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs.</p>
-                              <p className="text-[10px] text-slate-600 font-bold uppercase">Cálculo sobre sueldo base de 130 Bs.</p>
+                          <div className="space-y-6 font-sans">
+                            <div className="flex justify-between items-start border-b-2 border-black pb-4">
+                              <div className="flex gap-3 items-center">
+                                <img src={settings.logoUrl || "https://picsum.photos/seed/roxtor/100/50"} alt="Logo" className="h-10 grayscale" referrerPolicy="no-referrer" />
+                                <div>
+                                  <h1 className="text-lg font-black italic uppercase tracking-tighter">LIQUIDACIÓN DE PRESTACIONES</h1>
+                                  <p className="text-[8px] font-bold uppercase">{fiscalData.name}</p>
+                                  <p className="text-[8px] font-bold">RIF {fiscalData.rif}</p>
+                                </div>
+                              </div>
+                              <div className="text-right text-[9px] font-bold uppercase">
+                                <p>Fecha: {format(new Date(), 'dd/MM/yyyy')}</p>
+                              </div>
                             </div>
-                            <div className="bg-[#111] border border-white/10 rounded-2xl p-8 text-center space-y-2">
-                              <p className="text-slate-500 text-xs font-black uppercase tracking-widest">Total en Dólares (Bonos)</p>
-                              <p className="text-5xl font-black italic tracking-tighter text-green-500">{liq.totalUsd.toLocaleString('en-US', { minimumFractionDigits: 2 })} $</p>
-                              <p className="text-[10px] text-slate-600 font-bold uppercase">Cálculo sobre bonos complementarios</p>
+
+                            <div className="grid grid-cols-2 gap-4 text-[9px]">
+                              <div className="bg-slate-50 p-2 rounded border border-slate-200">
+                                <p className="text-slate-500 uppercase font-black text-[7px]">TRABAJADOR</p>
+                                <p className="font-black text-xs uppercase">{selectedAgent.fullName || selectedAgent.name}</p>
+                                <p className="font-bold">C.I: {selectedAgent.idNumber || 'S/N'}</p>
+                              </div>
+                              <div className="bg-slate-50 p-2 rounded border border-slate-200 text-right">
+                                <p className="text-slate-500 uppercase font-black text-[7px]">DATOS LABORALES</p>
+                                <p className="font-bold uppercase">Ingreso: {selectedAgent.entryDate ? format(new Date(selectedAgent.entryDate), 'dd/MM/yyyy') : 'S/N'}</p>
+                                <p className="font-bold uppercase">Antigüedad: {liq.seniorityYears}a {liq.seniorityDays % 365}d</p>
+                              </div>
                             </div>
-                          </>
+
+                            <div className="space-y-4">
+                              <p className="text-[8px] font-black uppercase border-b border-black">CÁLCULO SEGÚN {liquidationFormat === 'A' ? 'LOTTT (ART. 142)' : liquidationFormat === 'B' ? 'GESTIÓN ADMINISTRATIVA' : 'FORMATO MIXTO'}</p>
+                              
+                              <div className="space-y-2 text-[10px]">
+                                {liquidationFormat === 'A' && (
+                                  <div className="flex justify-between items-center py-2 border-b border-slate-100">
+                                    <span className="font-medium uppercase">Prestaciones Sociales LOTTT (Base 130 Bs)</span>
+                                    <span className="font-black">{liq.lotttBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs.</span>
+                                  </div>
+                                )}
+
+                                {liquidationFormat === 'B' && (
+                                  <div className="flex justify-between items-center py-2 border-b border-slate-100">
+                                    <span className="font-medium uppercase">Liquidación de Gestión (Sueldo Real USD)</span>
+                                    <span className="font-black">{liq.roxtorUsd.toLocaleString('en-US', { minimumFractionDigits: 2 })} $</span>
+                                  </div>
+                                )}
+
+                                {liquidationFormat === 'C' && (
+                                  <>
+                                    <div className="flex justify-between items-center py-2 border-b border-slate-100">
+                                      <span className="font-medium uppercase">Base Legal LOTTT</span>
+                                      <span className="font-black">{liq.lotttBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs.</span>
+                                    </div>
+                                    <div className="flex justify-between items-center py-2 border-b border-slate-100">
+                                      <span className="font-medium uppercase">Bono de Egreso Especial (Acuerdo)</span>
+                                      <span className="font-black">{liq.specialExitBonusBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs.</span>
+                                    </div>
+                                    <div className="flex justify-between items-center py-2 bg-slate-50 p-2 rounded">
+                                      <span className="font-black uppercase">Total Conciliado</span>
+                                      <span className="font-black text-lg">{(liq.lotttBs + liq.specialExitBonusBs).toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs.</span>
+                                    </div>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="pt-20 grid grid-cols-2 gap-12">
+                              <div className="text-center border-t border-black pt-2">
+                                <p className="text-[7px] font-black uppercase">Firma del Trabajador</p>
+                              </div>
+                              <div className="text-center border-t border-black pt-2">
+                                <p className="text-[7px] font-black uppercase">Por la Empresa</p>
+                              </div>
+                            </div>
+
+                            <div className="mt-6 text-center">
+                              <p className="text-[6px] font-bold uppercase text-slate-400 leading-tight">
+                                {fiscalData.name} | RIF {fiscalData.rif} <br/>
+                                Documento generado para fines de cierre de relación laboral.
+                              </p>
+                            </div>
+                          </div>
                         );
                       })()}
                     </div>
@@ -614,70 +665,19 @@ const RRHH: React.FC<Props> = ({ agents, onUpdateAgent, settings, payroll }) => 
                     <div className="flex justify-end">
                       <button 
                         onClick={generateLiquidationPDF}
-                        className="flex items-center gap-2 px-4 py-2 bg-blue-600/20 text-blue-400 hover:bg-blue-600/30 rounded-xl font-black uppercase italic text-[10px] transition-all border border-blue-600/30"
+                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-black uppercase italic text-[10px] transition-all shadow-lg shadow-blue-600/20"
                       >
                         <Download className="w-4 h-4" /> Descargar Liquidación PDF
                       </button>
                     </div>
 
                     <div className="fixed -left-[2000px] top-0">
-                      <div ref={payStubRef} className="bg-white text-black p-8 w-[139.7mm] min-h-[215.9mm] flex flex-col font-sans">
-                        <div className="flex justify-between items-start border-b-2 border-black pb-4 mb-6">
-                           <div>
-                             <h2 className="text-xl font-black italic uppercase italic">RECIBO DE PAGO</h2>
-                             <p className="text-[10px] font-bold">INVERSIONES ROXTOR C.A.</p>
-                             <p className="text-[10px]">RIF J-504746813</p>
-                           </div>
-                           <div className="text-right">
-                             <p className="text-[10px] font-bold">FECHA: {format(new Date(), 'dd/MM/yyyy')}</p>
-                             <p className="text-[10px] font-bold">NRO: {Date.now().toString().slice(-6)}</p>
-                           </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-4 mb-8 text-[10px]">
-                           <div>
-                             <p className="text-slate-500 uppercase font-bold">TRABAJADOR</p>
-                             <p className="font-black text-sm">{selectedAgent.fullName}</p>
-                             <p>C.I: {selectedAgent.idNumber}</p>
-                           </div>
-                           <div className="text-right">
-                             <p className="text-slate-500 uppercase font-bold">CARGO</p>
-                             <p className="font-black">{selectedAgent.role}</p>
-                           </div>
-                        </div>
-
-                        <div className="flex-1 border-t border-b border-black py-4 space-y-2">
-                           <div className="flex justify-between text-xs">
-                             <span>Sueldo Base Semanal (Bs)</span>
-                             <span className="font-bold">{(selectedAgent.baseSalaryBs || 130) / 4} Bs.</span>
-                           </div>
-                           <div className="flex justify-between text-xs">
-                             <span>Bono Complementario Semanal (USD)</span>
-                             <span className="font-bold">{(selectedAgent.complementaryBonusUsd || 0) / 4} $</span>
-                           </div>
-                           <div className="flex justify-between text-xs">
-                             <span>Horas Trabajadas</span>
-                             <span className="font-bold">{calculateAttendanceStats(selectedAgent).totalHours} h</span>
-                           </div>
-                           {selectedAgent.hourlyRateUsd && (
-                             <div className="flex justify-between text-xs text-blue-600 font-bold">
-                               <span>Pago por Horas (USD)</span>
-                               <span>{(calculateAttendanceStats(selectedAgent).totalHours * selectedAgent.hourlyRateUsd).toFixed(2)} $</span>
-                             </div>
-                           )}
-                        </div>
-
-                        <div className="mt-auto pt-8 flex justify-between items-end">
-                           <div className="w-40 border-t border-black text-center pt-2">
-                             <p className="text-[8px] font-bold uppercase">Firma del Trabajador</p>
-                           </div>
-                           <div className="text-right">
-                             <p className="text-[10px] font-bold uppercase">Total a Pagar</p>
-                             <p className="text-2xl font-black italic">
-                               {((selectedAgent.complementaryBonusUsd || 0) / 4 + (calculateAttendanceStats(selectedAgent).totalHours * (selectedAgent.hourlyRateUsd || 0))).toFixed(2)} $
-                             </p>
-                           </div>
-                        </div>
+                      <div ref={payStubRef}>
+                        <PayrollReceipt 
+                          agent={selectedAgent} 
+                          settings={settings} 
+                          isPrinting={true}
+                        />
                       </div>
                     </div>
                   </div>
@@ -688,64 +688,136 @@ const RRHH: React.FC<Props> = ({ agents, onUpdateAgent, settings, payroll }) => 
                     <div className="bg-[#111] border border-white/10 rounded-2xl p-8 space-y-8">
                       <div className="flex justify-between items-center">
                         <h3 className="text-xl font-black italic uppercase tracking-tighter">Plan de Vacaciones Colectivas</h3>
-                        <div className="px-4 py-2 bg-green-600/20 text-green-400 rounded-xl border border-green-600/30 text-xs font-black uppercase">
-                          2 Semanas / Año
+                        <div className="flex gap-2">
+                          <button 
+                            onClick={() => setShowVacationPreview(!showVacationPreview)}
+                            className="px-4 py-2 bg-blue-600/20 text-blue-400 rounded-xl border border-blue-600/30 text-[10px] font-black uppercase"
+                          >
+                            {showVacationPreview ? 'Cerrar Previsualización' : 'Previsualizar Recibo'}
+                          </button>
+                          <div className="px-4 py-2 bg-green-600/20 text-green-400 rounded-xl border border-green-600/30 text-xs font-black uppercase">
+                            2 Semanas / Año
+                          </div>
                         </div>
                       </div>
 
                       <div className="grid grid-cols-2 gap-8">
                         <div className="space-y-4">
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center font-black">1</div>
-                            <h4 className="font-black uppercase italic text-sm">Semana de Diciembre (Descanso)</h4>
-                          </div>
-                          <div className="bg-black/40 p-6 rounded-2xl border border-white/5 space-y-4">
-                            <p className="text-xs text-slate-400 leading-relaxed font-medium">
-                              Se otorga una semana de descanso efectivo en Diciembre. El pago incluye la semana de sueldo regular más una semana de aguinaldo.
-                            </p>
-                            {(() => {
-                              const vac = calculateVacations(selectedAgent);
-                              return (
-                                <div className="flex justify-between items-end">
-                                  <div>
-                                    <p className="text-[10px] text-slate-500 font-black uppercase">Pago Total Diciembre</p>
-                                    <p className="text-xl font-black">{vac.decemberPayment.bs.toFixed(2)} Bs.</p>
-                                  </div>
-                                  <div className="text-right">
-                                    <p className="text-xl font-black text-green-500">{vac.decemberPayment.usd.toFixed(2)} $</p>
-                                  </div>
-                                </div>
-                              );
-                            })()}
+                          <h4 className="font-black uppercase italic text-sm text-blue-400">Fechas de Disfrute</h4>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-black text-slate-500 uppercase">Inicio</label>
+                              <input 
+                                type="date" 
+                                value={selectedAgent.vacationStart || ''}
+                                onChange={(e) => onUpdateAgent({...selectedAgent, vacationStart: e.target.value})}
+                                className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-2 text-xs outline-none focus:border-blue-500"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-black text-slate-500 uppercase">Fin</label>
+                              <input 
+                                type="date" 
+                                value={selectedAgent.vacationEnd || ''}
+                                onChange={(e) => onUpdateAgent({...selectedAgent, vacationEnd: e.target.value})}
+                                className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-2 text-xs outline-none focus:border-blue-500"
+                              />
+                            </div>
                           </div>
                         </div>
 
                         <div className="space-y-4">
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center font-black">2</div>
-                            <h4 className="font-black uppercase italic text-sm">Semana Flexible (Disfrute)</h4>
+                          <h4 className="font-black uppercase italic text-sm text-blue-400">Resumen de Pago</h4>
+                          {(() => {
+                            const vac = calculateVacationDetails(selectedAgent, settings);
+                            return (
+                              <div className="bg-black/40 p-4 rounded-2xl border border-white/5 grid grid-cols-2 gap-4">
+                                <div>
+                                  <p className="text-[8px] text-slate-500 font-black uppercase">Total en Bs.</p>
+                                  <p className="text-xl font-black">{vac.totalBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs.</p>
+                                </div>
+                                <div className="text-right">
+                                  <p className="text-[8px] text-slate-500 font-black uppercase">Total en USD</p>
+                                  <p className="text-xl font-black text-green-500">{vac.totalUsd.toLocaleString('en-US', { minimumFractionDigits: 2 })} $</p>
+                                </div>
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      </div>
+
+                      {showVacationPreview && (
+                        <div className="pt-8 border-t border-white/10 space-y-6">
+                          <div className="flex justify-end">
+                            <button 
+                              onClick={generateVacationPDF}
+                              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-black uppercase italic text-[10px] transition-all"
+                            >
+                              <Download className="w-4 h-4" /> Descargar Recibo de Vacaciones
+                            </button>
                           </div>
-                          <div className="bg-black/40 p-6 rounded-2xl border border-white/5 space-y-4">
-                            <p className="text-xs text-slate-400 leading-relaxed font-medium">
-                              La segunda semana se puede tomar durante el año con previa notificación. El pago se puede solicitar en Diciembre o al momento del disfrute.
-                            </p>
+                          
+                          <div className="bg-white text-black p-8 rounded-sm shadow-2xl overflow-hidden min-h-[215.9mm] w-[139.7mm] mx-auto" ref={vacationRef}>
                             {(() => {
-                              const vac = calculateVacations(selectedAgent);
+                              const vac = calculateVacationDetails(selectedAgent, settings);
                               return (
-                                <div className="flex justify-between items-end">
-                                  <div>
-                                    <p className="text-[10px] text-slate-500 font-black uppercase">Pago Semana Flexible</p>
-                                    <p className="text-xl font-black">{vac.annualWeekPayment.bs.toFixed(2)} Bs.</p>
+                                <div className="space-y-6 font-sans">
+                                  <div className="flex justify-between items-start border-b-2 border-black pb-4">
+                                    <div className="flex gap-3 items-center">
+                                      <img src={settings.logoUrl || "https://picsum.photos/seed/roxtor/100/50"} alt="Logo" className="h-10 grayscale" referrerPolicy="no-referrer" />
+                                      <div>
+                                        <h1 className="text-lg font-black italic uppercase tracking-tighter">RECIBO DE VACACIONES</h1>
+                                        <p className="text-[8px] font-bold uppercase">{fiscalData.name}</p>
+                                        <p className="text-[8px] font-bold">RIF {fiscalData.rif}</p>
+                                      </div>
+                                    </div>
+                                    <div className="text-right text-[9px] font-bold uppercase">
+                                      <p>Fecha: {format(new Date(), 'dd/MM/yyyy')}</p>
+                                    </div>
                                   </div>
-                                  <div className="text-right">
-                                    <p className="text-xl font-black text-green-500">{vac.annualWeekPayment.usd.toFixed(2)} $</p>
+
+                                  <div className="bg-slate-50 p-3 rounded border border-slate-200 text-[9px]">
+                                    <p className="text-slate-500 uppercase font-black text-[7px]">TRABAJADOR</p>
+                                    <p className="font-black text-xs uppercase">{selectedAgent.fullName || selectedAgent.name}</p>
+                                    <p className="font-bold">C.I: {selectedAgent.idNumber || 'S/N'}</p>
+                                    <div className="mt-2 grid grid-cols-2 gap-4 border-t border-slate-200 pt-2">
+                                      <p className="font-bold uppercase">Desde: {selectedAgent.vacationStart ? format(new Date(selectedAgent.vacationStart), 'dd/MM/yyyy') : '---'}</p>
+                                      <p className="font-bold uppercase">Hasta: {selectedAgent.vacationEnd ? format(new Date(selectedAgent.vacationEnd), 'dd/MM/yyyy') : '---'}</p>
+                                    </div>
+                                  </div>
+
+                                  <div className="space-y-4">
+                                    <p className="text-[8px] font-black uppercase border-b border-black">Desglose de Pago (Tasa: {vac.exchangeRate} Bs/$)</p>
+                                    <div className="space-y-2 text-[10px]">
+                                      <div className="flex justify-between items-center py-1 border-b border-slate-100">
+                                        <span className="font-medium uppercase">Semana de Vacaciones (Disfrute)</span>
+                                        <span className="font-bold">{vac.vacationWeekBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs.</span>
+                                      </div>
+                                      <div className="flex justify-between items-center py-1 border-b border-slate-100">
+                                        <span className="font-medium uppercase">Semana de Aguinaldo (Diciembre)</span>
+                                        <span className="font-bold">{vac.aguinaldoWeekBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs.</span>
+                                      </div>
+                                      <div className="flex justify-between items-center py-2 bg-slate-50 p-2 rounded">
+                                        <span className="font-black uppercase">Total a Pagar</span>
+                                        <span className="font-black text-lg">{vac.totalBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs.</span>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  <div className="pt-20 grid grid-cols-2 gap-12">
+                                    <div className="text-center border-t border-black pt-2">
+                                      <p className="text-[7px] font-black uppercase">Firma del Trabajador</p>
+                                    </div>
+                                    <div className="text-center border-t border-black pt-2">
+                                      <p className="text-[7px] font-black uppercase">Sello Roxtor</p>
+                                    </div>
                                   </div>
                                 </div>
                               );
                             })()}
                           </div>
                         </div>
-                      </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -769,44 +841,48 @@ const RRHH: React.FC<Props> = ({ agents, onUpdateAgent, settings, payroll }) => 
 
                     {/* Previsualización del Contrato */}
                     <div className="bg-white text-black p-12 rounded-sm shadow-2xl overflow-hidden" ref={contractRef}>
-                      <div className="max-w-2xl mx-auto space-y-8 font-serif text-sm leading-relaxed text-justify">
-                        <div className="text-center space-y-2 mb-12">
-                          <h1 className="text-2xl font-bold uppercase underline">CONTRATO INDIVIDUAL DE TRABAJO Y CÓDIGO DE ÉTICA</h1>
-                          <p className="text-xs font-bold">INVERSIONES ROXTOR C.A. - RIF J-504746813</p>
+                      <div className="max-w-2xl mx-auto space-y-6 font-serif text-[11px] leading-relaxed text-justify">
+                        <div className="text-center space-y-1 mb-8">
+                          <h1 className="text-lg font-bold uppercase underline">CONTRATO INDIVIDUAL DE TRABAJO</h1>
+                          <p className="text-[9px] font-bold">{fiscalData.name} - RIF {fiscalData.rif}</p>
                         </div>
 
                         <p>
-                          Entre la sociedad mercantil <b>INVERSIONES ROXTOR C.A.</b>, domiciliada en Ciudad Guayana, Estado Bolívar, 
-                          representada en este acto por su Gerencia General, quien en lo sucesivo se denominará <b>EL PATRONO</b>, 
+                          Entre la sociedad mercantil <b>{fiscalData.name.toUpperCase()}</b>, domiciliada en {fiscalData.address}, debidamente inscrita ante el Registro Mercantil, 
+                          representada en este acto por su Gerencia General, quien en lo sucesivo y a los efectos de este contrato se denominará <b>EL PATRONO</b>, 
                           por una parte; y por la otra el ciudadano(a) <b>{selectedAgent.fullName?.toUpperCase()}</b>, 
                           titular de la cédula de identidad Nro. <b>{selectedAgent.idNumber}</b>, quien en lo sucesivo se denominará 
-                          <b> EL TRABAJADOR</b>, se ha convenido en celebrar el presente contrato de trabajo bajo las siguientes cláusulas:
+                          <b> EL TRABAJADOR</b>, se ha convenido en celebrar el presente contrato de trabajo sujeto a las cláusulas que se detallan a continuación:
                         </p>
 
-                        <div className="space-y-4">
-                          <p><b>PRIMERA (OBJETO):</b> EL TRABAJADOR se obliga a prestar sus servicios personales bajo la dependencia de EL PATRONO en el cargo de <b>{selectedAgent.role.toUpperCase()}</b>.</p>
+                        <div className="space-y-3">
+                          <p><b>PRIMERA (OBJETO):</b> EL TRABAJADOR se obliga a prestar sus servicios personales bajo la dependencia de EL PATRONO, desempeñando el cargo de <b>{selectedAgent.role.toUpperCase()}</b>, realizando las funciones inherentes a dicha posición y aquellas que le sean asignadas de acuerdo a su capacidad y naturaleza del servicio.</p>
                           
-                          <p><b>SEGUNDA (FECHA DE INGRESO):</b> La relación laboral inicia el día <b>{selectedAgent.entryDate ? format(new Date(selectedAgent.entryDate), "dd 'de' MMMM 'de' yyyy", { locale: es }) : '__________'}</b>.</p>
+                          <p><b>SEGUNDA (FECHA DE INGRESO):</b> La relación laboral objeto de este contrato inicia el día <b>{selectedAgent.entryDate ? format(new Date(selectedAgent.entryDate), "dd 'de' MMMM 'de' yyyy", { locale: es }) : '__________'}</b>. Se establece un período de prueba de noventa (90) días, conforme a la normativa legal vigente.</p>
                           
-                          <p><b>TERCERA (REMUNERACIÓN):</b> Se establece un sueldo base mensual de <b>{selectedAgent.baseSalaryBs || 130} Bolívares</b>, pagaderos semanalmente. Adicionalmente, se acuerda un bono de productividad y asistencia de <b>{selectedAgent.complementaryBonusUsd || 0} Dólares Americanos</b> (pagaderos en divisas o su equivalente en Bs. a tasa BCV).</p>
+                          <p><b>TERCERA (REMUNERACIÓN Y MONEDA DE CUENTA):</b> Se establece un sueldo base mensual de <b>130 Bolívares</b>, el cual será cancelado mediante cuotas semanales. Adicionalmente, se acuerda el pago de un Bono de Productividad y Asistencia equivalente a la cantidad de <b>{selectedAgent.complementaryBonusUsd || 0} Dólares Americanos</b>, utilizando como única referencia de cálculo el tipo de cambio oficial publicado por el Banco Central de Venezuela (BCV) vigente a la fecha de cada pago efectivo.</p>
                           
-                          <p><b>CUARTA (JORNADA):</b> La jornada laboral será de Lunes a Sábado, de 8:00 AM a 5:00 PM, con una hora de descanso, cumpliendo con las 45 horas semanales establecidas en la LOTTT.</p>
+                          <p><b>CUARTA (JORNADA LABORAL Y ASISTENCIA):</b> La jornada de trabajo será de Lunes a Sábado, en el horario de 8:00 AM a 5:00 PM, con una (1) hora de descanso intermedio. EL TRABAJADOR acepta que el registro de asistencia se llevará a través del sistema Roxtor ERP, y que los retrasos injustificados generarán los descuentos proporcionales correspondientes sobre su remuneración integral.</p>
                           
-                          <p><b>QUINTA (VACACIONES):</b> Se establecen dos (2) semanas de vacaciones anuales. Una semana de descanso obligatorio en Diciembre (pagada con sueldo + aguinaldo) y una semana de disfrute flexible durante el año.</p>
+                          <p><b>QUINTA (VACACIONES Y BENEFICIOS):</b> Se establecen dos (2) semanas de vacaciones anuales colectivas. La primera semana se disfrutará en el mes de Diciembre (remunerada con salario correspondiente a 1 semana más 1 semana de sueldo como aguinaldo) y la segunda semana será de disfrute con el pago de su otra semana de salario previa planificación acordada con la Gerencia.</p>
                           
-                          <p><b>SEXTA (CONFIDENCIALIDAD Y ÉTICA):</b> EL TRABAJADOR se compromete a no filtrar diseños, técnicas de producción o información interna de la empresa. Queda prohibido el uso de equipos para fines personales sin autorización. El incumplimiento de estas normas o el maltrato a la maquinaria será causal de despido justificado según la LOTTT.</p>
+                          <p><b>SEXTA (CONFIDENCIALIDAD Y CÓDIGO DE ÉTICA):</b> EL TRABAJADOR se compromete formalmente a mantener la más estricta confidencialidad sobre los diseños, procesos de fabricación, cartera de clientes y cualquier información interna de {fiscalData.name.toUpperCase()}. Queda prohibida la reproducción o filtración de material propiedad de la empresa. El maltrato intencional de la maquinaria, equipos de computación o mobiliario será causal de despido justificado según lo previsto en la LOTTT.</p>
                           
-                          <p><b>SÉPTIMA (COMPROMISO):</b> La empresa se compromete a dotar de uniformes, herramientas de diseño y un ambiente de trabajo seguro en la sede de Ciudad Guayana.</p>
+                          <p><b>SÉPTIMA (COMPROMISO Y DOMICILIO):</b> La empresa se compromete a dotar de uniformes, herramientas de trabajo y ambiente de trabajo seguro. Para todos los efectos derivados de este contrato, las partes eligen como domicilio especial y excluyente a la ciudad de Puerto Ordaz, Ciudad Guayana, Estado Bolívar.</p>
                         </div>
 
-                        <div className="pt-24 grid grid-cols-2 gap-20 text-center">
+                        <p className="pt-4">
+                          Se firman dos (2) ejemplares de un mismo tenor y a un solo efecto, en Ciudad Guayana, a los {format(new Date(), 'dd')} días del mes de {format(new Date(), 'MMMM', { locale: es })} de 2026.
+                        </p>
+
+                        <div className="pt-16 grid grid-cols-2 gap-20 text-center">
                           <div className="border-t border-black pt-2">
                             <p className="font-bold">POR EL PATRONO</p>
-                            <p className="text-[10px]">INVERSIONES ROXTOR C.A.</p>
+                            <p className="text-[9px]">{fiscalData.name}</p>
                           </div>
                           <div className="border-t border-black pt-2">
                             <p className="font-bold">POR EL TRABAJADOR</p>
-                            <p className="text-[10px]">{selectedAgent.fullName}</p>
+                            <p className="text-[9px]">{selectedAgent.fullName}</p>
                           </div>
                         </div>
                       </div>

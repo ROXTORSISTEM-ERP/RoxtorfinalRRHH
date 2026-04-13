@@ -109,7 +109,10 @@ export const sendOrderNotification = async (order: Order, type: 'inicio' | 'orde
     case 'orden': message = `🔸 ORDEN: ${order.orderNumber}. Recibo: ${orderUrl}`; break;
     case 'cobranza': message = `🔔 PAGO PENDIENTE: Orden ${order.orderNumber}`; break;
     case 'diseno': message = `🎨 DISEÑO LISTO: Ver aquí ${orderUrl}`; break;
-    case 'listo': message = `✅ LISTO PARA RETIRAR: Orden ${order.orderNumber}`; break;
+    case 'listo': 
+      const storeName = order.orderNumber.startsWith('P') ? 'Sede Principal Vista al Sol' : order.orderNumber.startsWith('C') ? 'Sede Centro San Felix' : 'nuestra tienda';
+      message = `✅ ¡PEDIDO LISTO! 🦖\n\nOrden: ${order.orderNumber}\n📍 Retirar en: *${storeName}*\n🔗 Ver Recibo: ${orderUrl}`; 
+      break;
   }
 
   return sendWhatsappMessage({ to: cleanPhone, body: message });

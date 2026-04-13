@@ -1,27 +1,39 @@
-import { runAI } from "../utils/aiServer";
+import { runAI } from "./aiserver";
+import { ROXTOR_SYSTEM_INSTRUCTIONS } from "../constants/systemInstructions";
 
 export async function auditAI(data: any, image?: string) {
-  const prompt = typeof data === 'string' ? data : `
-Actúa como CFO y Auditor de ROXTOR.
+  try {
+    const systemPrompt = `
+      ${ROXTOR_SYSTEM_INSTRUCTIONS}
+      Eres el CFO y Auditor de ROXTOR. Tu misión es analizar finanzas, detectar ineficiencias y optimizar el rendimiento.
+      
+      RESPONDE SIEMPRE EN ESTE FORMATO JSON:
+      {
+        "module": "audit",
+        "status": "Óptimo | Alerta | Crítico",
+        "analysis": "Desglose técnico de los números",
+        "questioning": "Pregunta provocadora sobre una decisión financiera",
+        "improvement_action": "Recomendación técnica concreta",
+        "metrics": {
+          "cash_flow_health": 0-100,
+          "margin_risk": "Bajo | Medio | Alto"
+        },
+        "suggested_reply": "Resumen ejecutivo para la gerencia"
+      }
+    `;
 
-Analiza los siguientes datos financieros o documentos:
+    const prompt = typeof data === 'string' ? data : `Analiza estos datos financieros: ${JSON.stringify(data)}`;
 
-${JSON.stringify(data)}
+    const result = await runAI(prompt, systemPrompt, image);
 
-Evalúa:
+    return result;
 
-- flujo de caja
-- margen operativo
-- gastos innecesarios
-- eficiencia
-
-Responde OBLIGATORIAMENTE en este formato:
-
-[STATUS]: (Óptimo / Alerta / Crítico)
-[ANÁLISIS DE DATOS]: 
-[CUESTIONAMIENTO]:
-[ACCIÓN DE MEJORA]:
-`;
-
-  return await runAI(prompt, undefined, image);
+  } catch (error: any) {
+    console.error("auditAI Error:", error);
+    return {
+      module: "audit",
+      status: "Error",
+      suggested_reply: "Error en el análisis de auditoría financiera."
+    };
+  }
 }

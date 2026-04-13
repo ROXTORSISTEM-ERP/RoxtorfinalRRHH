@@ -352,9 +352,10 @@ const askAiForFinancialReport = async () => {
   setIsAskingAi(true);
   
   try {
-    const prompt = `CFO & Auditor de Operaciones ROXTOR ERP. Periodo: ${months[viewMonth]} ${viewYear}. 
+    const prompt = `Actúa como el CFO y Auditor de Operaciones de ROXTOR ERP. 
+    Periodo: ${months[viewMonth]} ${viewYear}. 
       
-    DATOS FINANCIEROS:
+    DATOS FINANCIEROS Y OPERATIVOS:
     - Ventas Reales (Ingresos): $${totalSalesUsd}
     - Meta de Venta: $${currentMonthGoal?.targetAmountUsd || 'No definida'}
     - Progreso de Meta: ${salesGoalProgress}%
@@ -365,8 +366,19 @@ const askAiForFinancialReport = async () => {
     - Pagos de Deudas: $${totalDebtPaymentsUsd}
     - Saldo por Cobrar: $${totalReceivablesUsd}
     - Balance Neto: $${balanceNetoUsd}
+    - Punto de Equilibrio: $${breakEvenAnalysis.breakEvenSales.toFixed(2)}
+    - Saturación Taller: ${strategicIntelligence.saturation}%
+    - Dependencia Dueño: ${strategicIntelligence.ownerDependency}%
+    - Score Salud Flujo Caja: ${strategicIntelligence.cashFlowScore}/100
     
-    INSTRUCCIÓN: Analiza estos datos como CFO.`;
+    INSTRUCCIÓN: Genera un análisis técnico y crítico enfocado en MEJORAR LA PRODUCTIVIDAD y LA RENTABILIDAD.
+    Identifica fugas de capital, ineficiencias en el taller y sugiere acciones concretas.
+    
+    Responde OBLIGATORIAMENTE en este formato:
+    [STATUS]: (Óptimo / Alerta / Crítico)
+    [ANÁLISIS DE DATOS]: Desglose técnico de los números.
+    [CUESTIONAMIENTO]: Pregunta provocadora sobre una decisión o dato.
+    [ACCIÓN DE MEJORA]: Recomendación técnica concreta para aumentar productividad.`;
 
     const response = await callAI(prompt);
     setAiAdvice(response || "No se pudo generar el informe.");

@@ -27,12 +27,16 @@ import {
   Loader2
 } from 'lucide-react';
 
+import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
+
 interface Props {
   agents: Agent[];
   evaluations: StaffEvaluation[];
   setEvaluations: React.Dispatch<React.SetStateAction<StaffEvaluation[]>>;
   currentAgentId?: string | null;
   settings: AppSettings;
+  onUpdateAgent: (agent: Agent) => void;
 }
 
 const INITIAL_COURSES: Course[] = [
@@ -436,10 +440,11 @@ const INITIAL_COURSES: Course[] = [
   }
 ];
 
-const TrainingAcademy: React.FC<Props> = ({ agents, evaluations, setEvaluations, currentAgentId, settings }) => {
+const TrainingAcademy: React.FC<Props> = ({ agents, evaluations, setEvaluations, currentAgentId, settings, onUpdateAgent }) => {
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
   const [currentLessonIdx, setCurrentLessonIdx] = useState(0);
   const [showQuiz, setShowQuiz] = useState(false);
+  const [currentQuizIdx, setCurrentQuizIdx] = useState(0);
   const [quizAnswers, setQuizAnswers] = useState<number[]>([]);
   const [quizResult, setQuizResult] = useState<{ score: number; passed: boolean } | null>(null);
   const [isGeneratingCert, setIsGeneratingCert] = useState(false);
@@ -448,6 +453,7 @@ const TrainingAcademy: React.FC<Props> = ({ agents, evaluations, setEvaluations,
   const handleStartCourse = (course: Course) => {
     setSelectedCourse(course);
     setCurrentLessonIdx(0);
+    setCurrentQuizIdx(0);
     setShowQuiz(false);
     setQuizResult(null);
     setQuizAnswers([]);
@@ -502,81 +508,100 @@ const TrainingAcademy: React.FC<Props> = ({ agents, evaluations, setEvaluations,
     }
   };
 
+  const fiscalData = {
+    name: "Inversiones Roxtor, C.A",
+    rif: "J-40295973-7",
+    address: "Ciudad Guayana, Estado Bolívar"
+  };
+
   const generateCertificate = async () => {
-  if (!certificateRef.current || !currentAgentId) return;
-  setIsGeneratingCert(true);
-  
-  try {
-    const agent = agents.find(a => a.id === currentAgentId);
-    const isContract = selectedCourse?.id === 'contrato-legal';
-
-    // Configuramos el PDF: Portrait para contrato, Landscape para diploma
-    const pdf = new jsPDF({
-      orientation: isContract ? 'portrait' : 'landscape',
-      unit: 'in',
-      format: [8.5, 11]
-    });
-
-    if (isContract) {
-      // --- LÓGICA DE CONTRATO (PÁGINA ÚNICA VERTICAL) ---
-      const contractPage = certificateRef.current.querySelector('#contract-page') as HTMLElement;
-      const canvas = await html2canvas(contractPage, { 
-        scale: 2, 
-        useCORS: true,
-        logging: false,
-        allowTaint: true,
-        backgroundColor: '#ffffff'
-      });
-      pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, 8.5, 11);
-    } else {
-      // --- LÓGICA DE DIPLOMA (PÁGINA 1 Y 2 HORIZONTAL) ---
-      // Página 1: Diploma Neón
-      const page1 = certificateRef.current.querySelector('#cert-page-1') as HTMLElement;
-      const canvas1 = await html2canvas(page1, { 
-        scale: 2, 
-        useCORS: true,
-        logging: false,
-        allowTaint: true,
-        backgroundColor: '#000814'
-      });
-      pdf.addImage(canvas1.toDataURL('image/png'), 'PNG', 0, 0, 11, 8.5);
-
-      // Página 2: Pensum Académico
-      pdf.addPage([11, 8.5], 'landscape');
-      const page2 = certificateRef.current.querySelector('#cert-page-2') as HTMLElement;
-      const canvas2 = await html2canvas(page2, { 
-        scale: 2, 
-        useCORS: true,
-        logging: false,
-        allowTaint: true,
-        backgroundColor: '#ffffff'
-      });
-      pdf.addImage(canvas2.toDataURL('image/png'), 'PNG', 0, 0, 11, 8.5);
-    }
-
-    const pdfBlob = pdf.output('blob');
-    const fileName = `expedientes/${currentAgentId}_${Date.now()}.pdf`;
+    if (!certificateRef.current || !currentAgentId) return;
+    setIsGeneratingCert(true);
     
-    if (isContract && supabase) {
-      const { error } = await supabase.storage
-        .from('expedientes')
-        .upload(fileName, pdfBlob);
-      
-      if (error) {
-        console.error('Error uploading contract:', error);
-      } else {
-        await supabase.from('agentes').update({ contractUrl: fileName, contractAccepted: true }).eq('id', currentAgentId);
-      }
-    }
+    try {
+      const agent = agents.find(a => a.id === currentAgentId);
+      const isContract = selectedCourse?.id === 'contrato-legal';
 
-    const docType = isContract ? 'Contrato' : 'Certificado';
-    pdf.save(`${docType}_Roxtor_${(agent?.fullName || 'Colaborador').replace(/\s+/g, '_')}.pdf`);
-  } catch (error) {
-    console.error('Error en generación:', error);
-  } finally {
-    setIsGeneratingCert(false);
-  }
-};
+      // Configuramos el PDF: Portrait para contrato, Landscape para diploma
+      // Media Carta: 139.7 x 215.9 mm
+      const pdf = new jsPDF({
+        orientation: isContract ? 'portrait' : 'landscape',
+        unit: 'mm',
+        format: isContract ? [139.7, 215.9] : [279.4, 215.9]
+      });
+
+      if (isContract) {
+        // --- LÓGICA DE CONTRATO (PÁGINA ÚNICA VERTICAL) ---
+        const contractPage = certificateRef.current.querySelector('#contract-page') as HTMLElement;
+        const canvas = await html2canvas(contractPage, { 
+          scale: 2, 
+          useCORS: true,
+          logging: false,
+          allowTaint: true,
+          backgroundColor: '#ffffff'
+        });
+        const pdfWidth = pdf.internal.pageSize.getWidth();
+        const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+        pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, pdfWidth, pdfHeight);
+      } else {
+        // --- LÓGICA DE DIPLOMA (PÁGINA 1 Y 2 HORIZONTAL) ---
+        // Página 1: Diploma Neón
+        const page1 = certificateRef.current.querySelector('#cert-page-1') as HTMLElement;
+        const canvas1 = await html2canvas(page1, { 
+          scale: 2, 
+          useCORS: true,
+          logging: false,
+          allowTaint: true,
+          backgroundColor: '#000814'
+        });
+        const pdfWidth = pdf.internal.pageSize.getWidth();
+        const pdfHeight = (canvas1.height * pdfWidth) / canvas1.width;
+        pdf.addImage(canvas1.toDataURL('image/png'), 'PNG', 0, 0, pdfWidth, pdfHeight);
+
+        // Página 2: Pensum Académico
+        pdf.addPage([279.4, 215.9], 'landscape');
+        const page2 = certificateRef.current.querySelector('#cert-page-2') as HTMLElement;
+        const canvas2 = await html2canvas(page2, { 
+          scale: 2, 
+          useCORS: true,
+          logging: false,
+          allowTaint: true,
+          backgroundColor: '#ffffff'
+        });
+        pdf.addImage(canvas2.toDataURL('image/png'), 'PNG', 0, 0, pdfWidth, pdfHeight);
+      }
+
+      const pdfBlob = pdf.output('blob');
+      const fileName = `contratos/${currentAgentId}_${Date.now()}.pdf`;
+      
+      if (supabase) {
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('contracts')
+          .upload(fileName, pdfBlob);
+
+        if (uploadError) throw uploadError;
+
+        const { data: { publicUrl } } = supabase.storage
+          .from('contracts')
+          .getPublicUrl(fileName);
+
+        // Actualizar agente con el link del contrato si aplica
+        if (isContract && agent) {
+          const updatedAgent = { ...agent, contractUrl: publicUrl };
+          onUpdateAgent(updatedAgent);
+        }
+      }
+
+      const docType = isContract ? 'Contrato' : 'Certificado';
+      pdf.save(`${docType}_Roxtor_${(agent?.fullName || 'Colaborador').replace(/\s+/g, '_')}.pdf`);
+      alert(isContract ? 'Contrato generado y guardado exitosamente' : 'Certificado generado exitosamente');
+    } catch (error) {
+      console.error('Error en generación:', error);
+      alert('Error al generar el documento');
+    } finally {
+      setIsGeneratingCert(false);
+    }
+  };
 
   return (
     <>
@@ -629,17 +654,75 @@ const TrainingAcademy: React.FC<Props> = ({ agents, evaluations, setEvaluations,
               </div>
             ) : (
               <div className="max-w-2xl w-full bg-white rounded-[4rem] p-16 shadow-2xl space-y-12 animate-in slide-in-from-bottom-8">
-                 {selectedCourse.quiz.map((q, qIdx) => (
-                   <div key={q.id} className="space-y-6">
-                      <p className="font-black text-slate-800 uppercase italic text-sm">{qIdx + 1}. {q.question}</p>
-                      <div className="grid grid-cols-1 gap-3">
-                         {q.options.map((opt, optIdx) => (
-                           <button key={optIdx} onClick={() => { const newAns = [...quizAnswers]; newAns[qIdx] = optIdx; setQuizAnswers(newAns); }} className={`p-5 rounded-2xl border-2 text-left font-bold text-xs ${quizAnswers[qIdx] === optIdx ? 'bg-blue-50 border-blue-500 text-blue-700' : 'bg-white border-slate-100 text-slate-500'}`}>{opt}</button>
-                         ))}
+                 <div className="space-y-8">
+                    <div className="flex justify-between items-center">
+                      <p className="text-[10px] font-black text-blue-500 uppercase italic tracking-widest">Pregunta {currentQuizIdx + 1} de {selectedCourse.quiz.length}</p>
+                      <div className="h-1 flex-1 mx-4 bg-slate-100 rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-blue-500 transition-all duration-500" 
+                          style={{ width: `${((currentQuizIdx + 1) / selectedCourse.quiz.length) * 100}%` }}
+                        />
                       </div>
-                   </div>
-                 ))}
-                 <button disabled={quizAnswers.length < selectedCourse.quiz.length} onClick={handleSubmitQuiz} className="w-full py-6 rounded-[2.5rem] font-black text-xs uppercase italic bg-[#000814] text-white disabled:opacity-30">Enviar Evaluación</button>
+                    </div>
+                    
+                    <div className="space-y-6">
+                       <p className="font-black text-slate-800 uppercase italic text-lg leading-tight">
+                         {selectedCourse.quiz[currentQuizIdx].question}
+                       </p>
+                       <div className="grid grid-cols-1 gap-4">
+                          {selectedCourse.quiz[currentQuizIdx].options.map((opt, optIdx) => (
+                            <button 
+                              key={optIdx} 
+                              onClick={() => { 
+                                const newAns = [...quizAnswers]; 
+                                newAns[currentQuizIdx] = optIdx; 
+                                setQuizAnswers(newAns); 
+                              }} 
+                              className={`p-6 rounded-3xl border-4 text-left font-bold text-sm transition-all ${
+                                quizAnswers[currentQuizIdx] === optIdx 
+                                  ? 'bg-blue-50 border-blue-500 text-blue-700 scale-[1.02] shadow-lg' 
+                                  : 'bg-white border-slate-50 text-slate-500 hover:border-slate-200'
+                              }`}
+                            >
+                              <div className="flex items-center gap-4">
+                                <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${quizAnswers[currentQuizIdx] === optIdx ? 'border-blue-500 bg-blue-500' : 'border-slate-200'}`}>
+                                  {quizAnswers[currentQuizIdx] === optIdx && <div className="w-2 h-2 bg-white rounded-full" />}
+                                </div>
+                                {opt}
+                              </div>
+                            </button>
+                          ))}
+                       </div>
+                    </div>
+                 </div>
+
+                 <div className="flex gap-4 pt-8 border-t border-slate-100">
+                    <button 
+                      disabled={currentQuizIdx === 0} 
+                      onClick={() => setCurrentQuizIdx(currentQuizIdx - 1)} 
+                      className="flex-1 py-5 rounded-2xl font-black text-[10px] uppercase italic bg-slate-100 text-slate-400 hover:bg-slate-200 transition-all disabled:opacity-30"
+                    >
+                      Anterior
+                    </button>
+                    
+                    {currentQuizIdx < selectedCourse.quiz.length - 1 ? (
+                      <button 
+                        disabled={quizAnswers[currentQuizIdx] === undefined}
+                        onClick={() => setCurrentQuizIdx(currentQuizIdx + 1)} 
+                        className="flex-[2] py-5 rounded-2xl font-black text-[10px] uppercase italic bg-[#000814] text-white shadow-xl hover:bg-blue-600 transition-all disabled:opacity-30"
+                      >
+                        Siguiente Pregunta
+                      </button>
+                    ) : (
+                      <button 
+                        disabled={quizAnswers.length < selectedCourse.quiz.length || quizAnswers.some(a => a === undefined)} 
+                        onClick={handleSubmitQuiz} 
+                        className="flex-[2] py-5 rounded-2xl font-black text-[10px] uppercase italic bg-emerald-600 text-white shadow-xl hover:bg-emerald-700 transition-all disabled:opacity-30"
+                      >
+                        Finalizar Evaluación
+                      </button>
+                    )}
+                 </div>
               </div>
             )}
           </main>
@@ -809,60 +892,59 @@ const TrainingAcademy: React.FC<Props> = ({ agents, evaluations, setEvaluations,
             </div>
           </div>
 
-          {/* PÁGINA 3: CONTRATO (VERTICAL TAMAÑO CARTA) */}
-          <div id="contract-page" className="w-[850px] h-[1100px] bg-white p-20 flex flex-col italic border-2 border-slate-100 relative">
-            <div className="absolute top-10 right-10 opacity-10 rotate-12">
-               {settings.logoUrl ? (
-                 <img src={settings.logoUrl} className="w-40 h-40 object-contain" referrerPolicy="no-referrer" />
-               ) : (
-                 <div className="w-40 h-40 bg-[#000814] rounded-full flex items-center justify-center text-white text-8xl font-black italic">R</div>
-               )}
-            </div>
+          {/* PÁGINA 3: CONTRATO (VERTICAL TAMAÑO MEDIA CARTA) */}
+          <div id="contract-page" className="w-[139.7mm] min-h-[215.9mm] bg-white p-12 flex flex-col border border-slate-100 relative text-black">
+            {(() => {
+              const agent = agents.find(a => a.id === currentAgentId);
+              if (!agent) return null;
+              return (
+                <div className="max-w-2xl mx-auto space-y-4 font-serif text-[10px] leading-relaxed text-justify">
+                  <div className="text-center space-y-1 mb-6">
+                    <h1 className="text-sm font-bold uppercase underline">CONTRATO INDIVIDUAL DE TRABAJO</h1>
+                    <p className="text-[8px] font-bold">{fiscalData.name} - RIF {fiscalData.rif}</p>
+                  </div>
 
-            <div className="border-b-8 border-slate-900 pb-6 mb-12 flex justify-between items-end">
-              <div>
-                <h2 className="text-4xl font-black uppercase italic text-slate-900 leading-none">Contrato Laboral</h2>
-                <p className="text-blue-600 font-black text-xs uppercase tracking-[0.3em] mt-2">Expediente Digital Roxtor</p>
-              </div>
-              <div className="text-right">
-                <p className="text-slate-900 font-black text-sm uppercase">CÓDIGO: RT-LEG-2026</p>
-              </div>
-            </div>
+                  <p>
+                    Entre la sociedad mercantil <b>{fiscalData.name.toUpperCase()}</b>, domiciliada en {fiscalData.address}, debidamente inscrita ante el Registro Mercantil, 
+                    representada en este acto por su Gerencia General, quien en lo sucesivo y a los efectos de este contrato se denominará <b>EL PATRONO</b>, 
+                    por una parte; y por la otra el ciudadano(a) <b>{agent.fullName?.toUpperCase()}</b>, 
+                    titular de la cédula de identidad Nro. <b>{agent.idNumber}</b>, quien en lo sucesivo se denominará 
+                    <b> EL TRABAJADOR</b>, se ha convenido en celebrar el presente contrato de trabajo sujeto a las cláusulas que se detallan a continuación:
+                  </p>
 
-            <div className="flex-1 text-[14px] text-justify space-y-8 leading-relaxed text-slate-800">
-              <div className="bg-slate-50 p-8 rounded-[2rem] border-2 border-slate-100">
-                <p className="font-black text-slate-900 uppercase italic mb-2">Declaración del Colaborador:</p>
-                <p className="text-lg font-medium">
-                  Yo, <span className="font-black text-blue-700">{agents.find(a => a.id === currentAgentId)?.fullName || agents.find(a => a.id === currentAgentId)?.name}</span>, 
-                  identificado con la cédula N° <span className="font-black text-slate-900">{agents.find(a => a.id === currentAgentId)?.idNumber || 'V-00.000.000'}</span>, 
-                  en mi carácter de trabajador de <span className="font-black text-slate-900">INVERSIONES ROXTOR C.A.</span>, declaro:
-                </p>
-              </div>
+                  <div className="space-y-2">
+                    <p><b>PRIMERA (OBJETO):</b> EL TRABAJADOR se obliga a prestar sus servicios personales bajo la dependencia de EL PATRONO, desempeñando el cargo de <b>{agent.role.toUpperCase()}</b>, realizando las funciones inherentes a dicha posición y aquellas que le sean asignadas de acuerdo a su capacidad y naturaleza del servicio.</p>
+                    
+                    <p><b>SEGUNDA (FECHA DE INGRESO):</b> La relación laboral objeto de este contrato inicia el día <b>{agent.entryDate ? format(new Date(agent.entryDate), "dd 'de' MMMM 'de' yyyy", { locale: es }) : '__________'}</b>. Se establece un período de prueba de noventa (90) días, conforme a la normativa legal vigente.</p>
+                    
+                    <p><b>TERCERA (REMUNERACIÓN Y MONEDA DE CUENTA):</b> Se establece un sueldo base mensual de <b>130 Bolívares</b>, el cual será cancelado mediante cuotas semanales. Adicionalmente, se acuerda el pago de un Bono de Productividad y Asistencia equivalente a la cantidad de <b>{agent.complementaryBonusUsd || 0} Dólares Americanos</b>, utilizando como única referencia de cálculo el tipo de cambio oficial publicado por el Banco Central de Venezuela (BCV) vigente a la fecha de cada pago efectivo.</p>
+                    
+                    <p><b>CUARTA (JORNADA LABORAL Y ASISTENCIA):</b> La jornada de trabajo será de Lunes a Sábado, en el horario de 8:00 AM a 5:00 PM, con una (1) hora de descanso intermedio. EL TRABAJADOR acepta que el registro de asistencia se llevará a través del sistema Roxtor ERP, y que los retrasos injustificados generarán los descuentos proporcionales correspondientes sobre su remuneración integral.</p>
+                    
+                    <p><b>QUINTA (VACACIONES Y BENEFICIOS):</b> Se establecen dos (2) semanas de vacaciones anuales colectivas. La primera semana se disfrutará en el mes de Diciembre (remunerada con salario correspondiente a 1 semana más 1 semana de sueldo como aguinaldo) y la segunda semana será de disfrute con el pago de su otra semana de salario previa planificación acordada con la Gerencia.</p>
+                    
+                    <p><b>SEXTA (CONFIDENCIALIDAD Y CÓDIGO DE ÉTICA):</b> EL TRABAJADOR se compromete formalmente a mantener la más estricta confidencialidad sobre los diseños, procesos de fabricación, cartera de clientes y cualquier información interna de {fiscalData.name.toUpperCase()}. Queda prohibida la reproducción o filtración de material propiedad de la empresa. El maltrato intencional de la maquinaria, equipos de computación o mobiliario será causal de despido justificado según lo previsto en la LOTTT.</p>
+                    
+                    <p><b>SÉPTIMA (COMPROMISO Y DOMICILIO):</b> La empresa se compromete a dotar de uniformes, herramientas de trabajo y ambiente de trabajo seguro. Para todos los efectos derivados de este contrato, las partes eligen como domicilio especial y excluyente a la ciudad de Puerto Ordaz, Ciudad Guayana, Estado Bolívar.</p>
+                  </div>
 
-              <div className="space-y-6 px-4">
-                <p><span className="font-black text-slate-900">PRIMERO:</span> Acepto los términos de contratación bajo la modalidad de sueldo base (130,00 Bs) más bonificaciones de productividad y asistencia en divisas (tasa BCV), pagaderos semanalmente.</p>
-                <p><span className="font-black text-slate-900">SEGUNDO:</span> Me comprometo a resguardar la propiedad intelectual de la empresa, incluyendo diseños, patrones textiles y bases de datos del ERP.</p>
-                <p><span className="font-black text-slate-900">TERCERO:</span> Entiendo que el uso de maquinaria y activos de la empresa es estrictamente laboral. El maltrato de equipos o falta de ética profesional es causal de despido justificado.</p>
-                <p><span className="font-black text-slate-900">CUARTO:</span> Acepto el horario establecido y las normas de disciplina operativa regidas por el sistema de evaluación de desempeño.</p>
-              </div>
+                  <p className="pt-2">
+                    Se firman dos (2) ejemplares de un mismo tenor y a un solo efecto, en Ciudad Guayana, a los {format(new Date(), 'dd')} días del mes de {format(new Date(), 'MMMM', { locale: es })} de 2026.
+                  </p>
 
-              <div className="pt-20 flex flex-col items-center space-y-4">
-                <div className="w-80 h-[1px] bg-slate-900" />
-                <p className="text-xs font-black uppercase italic text-slate-900">Firma Digital del Colaborador</p>
-                <p className="text-[10px] text-slate-400 font-bold uppercase">Huella Digital: {currentAgentId?.toUpperCase()}</p>
-              </div>
-            </div>
-
-            <div className="pt-12 border-t-2 border-slate-200 flex justify-between items-center text-[10px] font-black text-slate-500 uppercase tracking-widest">
-              <div className="space-y-1">
-                <p className="text-slate-900">INVERSIONES ROXTOR C.A. | RIF: J-402959737</p>
-                <p>Sede Principal: Ciudad Guayana, Edo. Bolívar, Venezuela.</p>
-              </div>
-              <div className="text-right">
-                <p>Página 1 de 1</p>
-                <p>RX-LEG-{currentAgentId?.substring(0,8).toUpperCase()}</p>
-              </div>
-            </div>
+                  <div className="pt-12 grid grid-cols-2 gap-20 text-center">
+                    <div className="border-t border-black pt-2">
+                      <p className="font-bold">POR EL PATRONO</p>
+                      <p className="text-[8px]">{fiscalData.name}</p>
+                    </div>
+                    <div className="border-t border-black pt-2">
+                      <p className="font-bold">POR EL TRABAJADOR</p>
+                      <p className="text-[8px]">{agent.fullName}</p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </div>
       </div>

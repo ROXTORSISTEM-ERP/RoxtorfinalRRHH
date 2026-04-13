@@ -92,6 +92,7 @@ const Operaciones: React.FC<Props> = ({
   setLeads
 }) => {
   const [subTab, setSubTab] = useState<'flow' | 'orders' | 'direct' | 'cash' | 'voice' | 'studio' | 'manual' | 'auto' | 'crm'>('flow');
+  const [orderFormKey, setOrderFormKey] = useState(0);
   const [sessionAgentId, setSessionAgentId] = useState<string | null>(null);
   const [sessionStoreId, setSessionStoreId] = useState<string>(currentStoreId);
   const [selectedOrderForPrint, setSelectedOrderForPrint] = useState<Order | null>(null);
@@ -504,15 +505,17 @@ const Operaciones: React.FC<Props> = ({
               <div className="hidden"><Workflow orders={orders} setOrders={setOrders} settings={settings} agents={agents} workshops={workshops} products={products} debts={debts} setDebts={setDebts} radarAlerts={radarAlerts} setRadarAlerts={setRadarAlerts} /></div>
            </div>
         )}
-        {subTab === 'orders' && <ServiceOrderForm products={products} settings={settings} setSettings={setSettings} agents={agents} workshops={workshops} currentStoreId={sessionStoreId} currentAgentId={sessionAgentId} onSave={(newOrder) => {
+        {subTab === 'orders' && <ServiceOrderForm key={`order-${orderFormKey}`} products={products} settings={settings} setSettings={setSettings} agents={agents} workshops={workshops} currentStoreId={sessionStoreId} currentAgentId={sessionAgentId} onSave={(newOrder) => {
           setOrders([newOrder, ...orders]);
           setSelectedOrderForPrint(newOrder);
+          setOrderFormKey(prev => prev + 1);
         }} />}
         {subTab === 'studio' && <VoiceStudio products={products} settings={settings} />}
         {subTab === 'voice' && <VoiceAssistant products={products} settings={settings} />}
-        {subTab === 'direct' && <DirectSaleForm products={products} settings={settings} setSettings={setSettings} currentStoreId={sessionStoreId} onSave={(newSale) => {
+        {subTab === 'direct' && <DirectSaleForm key={`direct-${orderFormKey}`} products={products} settings={settings} setSettings={setSettings} currentStoreId={sessionStoreId} onSave={(newSale) => {
           setOrders([newSale, ...orders]);
           setSelectedOrderForPrint(newSale);
+          setOrderFormKey(prev => prev + 1);
         }} />}
         {subTab === 'cash' && <CashClosing orders={orders} expenses={expenses} setExpenses={setExpenses} settings={settings} agents={agents} filterStoreId={sessionStoreId} />}
         {subTab === 'crm' && <CRM leads={leads} onUpdateLeads={setLeads} orders={orders} />}

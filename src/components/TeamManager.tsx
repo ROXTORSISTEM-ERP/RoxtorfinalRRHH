@@ -1,6 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { Agent, Order, Expense, StoreConfig, AttendanceRecord } from '../types';
+import { getWeeklyAttendance } from '../utils/payrollCalculations';
 import { 
   UserPlus, 
   Trash2, 
@@ -79,18 +80,25 @@ const TeamManager: React.FC<Props & { stores?: any }> = ({ agents, setAgents, or
   };
 
   const getAbsences = (attendance: AttendanceRecord[] = []) => {
+    // Usamos la lógica centralizada si es posible, pero aquí recibimos attendance directamente
+    // Para mantener consistencia, calculamos ausencias de la semana actual
     const today = new Date();
-    const currentDay = today.getDate();
-    let workDays = 0;
-    for (let i = 1; i <= currentDay; i++) {
-      const d = new Date(today.getFullYear(), today.getMonth(), i);
-      if (d.getDay() !== 0) workDays++;
+    const startOfWeek = new Date(today);
+    startOfWeek.setDate(today.getDate() - today.getDay() + 1); // Lunes
+    startOfWeek.setHours(0, 0, 0, 0);
+
+    const workDays = [];
+    for (let i = 0; i < 6; i++) { // Lunes a Sábado
+      const d = new Date(startOfWeek);
+      d.setDate(startOfWeek.getDate() + i);
+      if (d <= today) workDays.push(d.toISOString().split('T')[0]);
     }
-    const presentDays = attendance.filter(r => {
-      const d = new Date(r.date);
-      return d.getMonth() === today.getMonth() && d.getFullYear() === today.getFullYear();
-    }).length;
-    return Math.max(0, workDays - presentDays);
+
+    const presentDays = attendance
+      .filter(r => r.status === 'presente' || r.status === 'tarde')
+      .map(r => r.date);
+
+    return workDays.filter(d => !presentDays.includes(d)).length;
   };
 
   const getAgentStats = (agentId: string) => {
@@ -373,6 +381,14 @@ const TeamManager: React.FC<Props & { stores?: any }> = ({ agents, setAgents, or
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-slate-400 uppercase italic">Fecha de Ingreso</label>
                 <input type="date" className="w-full bg-slate-50 border-2 rounded-2xl px-6 py-4 font-black uppercase text-xs outline-none" value={editingAgent.entryDate || ''} onChange={(e) => setEditingAgent({...editingAgent, entryDate: e.target.value})} />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase italic">Sueldo Base (Bs)</label>
+                <input type="number" className="w-full bg-slate-50 border-2 rounded-2xl px-6 py-4 font-black text-xs outline-none" value={editingAgent.baseSalaryBs || 130} onChange={(e) => setEditingAgent({...editingAgent, baseSalaryBs: parseFloat(e.target.value) || 0})} />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase italic">Bono Roxtor ($)</label>
+                <input type="number" className="w-full bg-slate-50 border-2 rounded-2xl px-6 py-4 font-black text-xs outline-none" value={editingAgent.complementaryBonusUsd || 0} onChange={(e) => setEditingAgent({...editingAgent, complementaryBonusUsd: parseFloat(e.target.value) || 0})} />
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-rose-600 uppercase italic flex items-center gap-2"><Key size={10}/> PIN (6 Dígitos)</label>

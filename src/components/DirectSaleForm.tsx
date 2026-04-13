@@ -54,6 +54,7 @@ const DirectSaleForm: React.FC<Props> = ({ products, settings, setSettings, curr
   const [currentStep, setCurrentStep] = useState<'main' | 'checklist'>('main');
   const [savedOrderData, setSavedOrderData] = useState<Order | null>(null);
   const [checklistProgress, setChecklistProgress] = useState<Record<string, boolean>>({});
+  const [isAnonymous, setIsAnonymous] = useState(false);
 
   const selectedStore = settings.stores.find(s => s.id === selectedStoreId) || settings.stores[0];
 
@@ -132,10 +133,13 @@ const DirectSaleForm: React.FC<Props> = ({ products, settings, setSettings, curr
 
   const handleSubmit = () => {
     const missingFields = [];
-    if (!customer.name) missingFields.push("Nombre del Cliente");
-    if (!customer.ci) missingFields.push("Cédula / RIF");
-    if (!customer.phone) missingFields.push("Teléfono");
+    if (!isAnonymous) {
+      if (!customer.name) missingFields.push("Nombre del Cliente");
+      if (!customer.ci) missingFields.push("Cédula / RIF");
+      if (!customer.phone) missingFields.push("Teléfono");
+    }
     if (orderItems.length === 0) missingFields.push("Al menos un producto en la lista");
+    if (!checklistProgress['protocolo_validado']) missingFields.push("Validación de Protocolo");
 
     if (missingFields.length > 0) {
       setShowErrors(true);
@@ -155,9 +159,9 @@ const DirectSaleForm: React.FC<Props> = ({ products, settings, setSettings, curr
       id: Math.random().toString(36).substr(2, 9),
       orderNumber: directSaleNum,
       storeId: selectedStoreId,
-      customerName: customer.name.toUpperCase(),
-      customerCi: customer.ci,
-      customerPhone: customer.phone ? `+58${customer.phone}` : '',
+      customerName: isAnonymous ? "VENTA LIBRE" : customer.name.toUpperCase(),
+      customerCi: isAnonymous ? "S/C" : customer.ci,
+      customerPhone: !isAnonymous && customer.phone ? `+58${customer.phone}` : '',
       items: orderItems,
       totalUsd,
       totalBs,
@@ -261,24 +265,27 @@ const DirectSaleForm: React.FC<Props> = ({ products, settings, setSettings, curr
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {ventasChecklist.items.map((item, index) => (
-              <button 
-                key={index}
-                onClick={() => setChecklistProgress(prev => ({ ...prev, [`ventas-${index}`]: !prev[`ventas-${index}`] }))}
-                className={`flex items-start gap-4 p-6 rounded-3xl border-2 transition-all text-left ${
-                  checklistProgress[`ventas-${index}`] 
-                    ? 'bg-emerald-50 border-emerald-100 text-emerald-700' 
-                    : 'bg-slate-50 border-transparent text-slate-500 hover:border-slate-100'
-                }`}
-              >
-                <div className={`mt-0.5 w-6 h-6 rounded-xl border-2 flex items-center justify-center transition-all ${
-                  checklistProgress[`ventas-${index}`] ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-200 bg-white'
-                }`}>
-                  {checklistProgress[`ventas-${index}`] && <CheckCircle2 size={14} />}
-                </div>
-                <span className="text-xs font-black uppercase leading-tight italic">{item}</span>
-              </button>
-            ))}
+            {ventasChecklist.items.map((item, index) => {
+              const itemKey = `ventas-${index}`;
+              return (
+                <button 
+                  key={itemKey}
+                  onClick={() => setChecklistProgress(prev => ({ ...prev, [itemKey]: !prev[itemKey] }))}
+                  className={`flex items-start gap-4 p-6 rounded-3xl border-2 transition-all text-left ${
+                    checklistProgress[itemKey] 
+                      ? 'bg-emerald-50 border-emerald-100 text-emerald-700' 
+                      : 'bg-slate-50 border-transparent text-slate-500 hover:border-slate-100'
+                  }`}
+                >
+                  <div className={`mt-0.5 w-6 h-6 rounded-xl border-2 flex items-center justify-center transition-all ${
+                    checklistProgress[itemKey] ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-200 bg-white'
+                  }`}>
+                    {checklistProgress[itemKey] && <CheckCircle2 size={14} />}
+                  </div>
+                  <span className="text-xs font-black uppercase leading-tight italic">{item}</span>
+                </button>
+              );
+            })}
           </div>
 
           {progress === 100 && (
@@ -372,31 +379,50 @@ const DirectSaleForm: React.FC<Props> = ({ products, settings, setSettings, curr
         </div>
 
         <div className="bg-white border-4 border-slate-50 rounded-[3rem] p-8 shadow-sm space-y-6">
-          <SectionHeader icon={<User size={20} className="text-[#004ea1]" />} title="Datos del Comprador" />
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <InputGroup 
-              label="Nombre del Cliente *" 
-              icon={<User size={14}/>} 
-              value={customer.name} 
-              error={showErrors && !customer.name}
-              onChange={(e: any) => setCustomer({...customer, name: e.target.value})}
-            />
-            <InputGroup 
-              label="Cédula / RIF *" 
-              icon={<Hash size={14}/>} 
-              value={customer.ci} 
-              error={showErrors && !customer.ci}
-              onChange={(e: any) => setCustomer({...customer, ci: e.target.value})}
-            />
-            <InputGroup 
-              label="Teléfono *" 
-              icon={<DollarSign size={14}/>} 
-              value={customer.phone} 
-              error={showErrors && !customer.phone}
-              onChange={(e: any) => setCustomer({...customer, phone: e.target.value})}
-              placeholder="412 1234567"
-            />
+          <div className="flex justify-between items-center">
+            <SectionHeader icon={<User size={20} className="text-[#004ea1]" />} title="Datos del Comprador" />
+            <label className="flex items-center gap-2 cursor-pointer bg-slate-50 px-4 py-2 rounded-xl border-2 border-slate-100 hover:bg-blue-50 transition-all">
+              <input 
+                type="checkbox" 
+                className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                checked={isAnonymous}
+                onChange={(e) => setIsAnonymous(e.target.checked)}
+              />
+              <span className="text-[10px] font-black uppercase italic text-slate-600">Sin personalizar</span>
+            </label>
           </div>
+          {!isAnonymous && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-in slide-in-from-top-2 duration-300">
+              <InputGroup 
+                label="Nombre del Cliente *" 
+                icon={<User size={14}/>} 
+                value={customer.name} 
+                error={showErrors && !customer.name}
+                onChange={(e: any) => setCustomer({...customer, name: e.target.value})}
+              />
+              <InputGroup 
+                label="Cédula / RIF *" 
+                icon={<Hash size={14}/>} 
+                value={customer.ci} 
+                error={showErrors && !customer.ci}
+                onChange={(e: any) => setCustomer({...customer, ci: e.target.value})}
+              />
+              <InputGroup 
+                label="Teléfono *" 
+                icon={<DollarSign size={14}/>} 
+                value={customer.phone} 
+                error={showErrors && !customer.phone}
+                onChange={(e: any) => setCustomer({...customer, phone: e.target.value})}
+                placeholder="412 1234567"
+              />
+            </div>
+          )}
+          {isAnonymous && (
+            <div className="p-4 bg-blue-50 rounded-2xl border-2 border-blue-100 flex items-center gap-3 animate-in zoom-in-95 duration-300">
+              <Zap className="text-blue-600" size={20} />
+              <p className="text-[10px] font-black uppercase italic text-blue-700">Venta rápida activada: Los datos del cliente se guardarán como "VENTA LIBRE".</p>
+            </div>
+          )}
         </div>
 
         <div className="bg-white border-4 border-slate-50 rounded-[3rem] p-8 shadow-sm space-y-8">
@@ -501,13 +527,13 @@ const DirectSaleForm: React.FC<Props> = ({ products, settings, setSettings, curr
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
-                {orderItems.map((item, idx) => (
-                  <tr key={idx} className="hover:bg-slate-50/50 transition-colors italic font-bold text-slate-600 uppercase text-xs">
+                {orderItems.map((item) => (
+                  <tr key={item.productId} className="hover:bg-slate-50/50 transition-colors italic font-bold text-slate-600 uppercase text-xs">
                     <td className="px-6 py-4 text-slate-800">{item.quantity}</td>
                     <td className="px-6 py-4">{item.name}</td>
                     <td className="px-6 py-4 text-[#004ea1]">${item.priceUsd.toFixed(2)}</td>
                     <td className="px-6 py-4 text-right">
-                      <button onClick={() => setOrderItems(orderItems.filter((_, i) => i !== idx))} className="text-slate-300 hover:text-red-500 transition-colors">
+                      <button onClick={() => setOrderItems(orderItems.filter((i) => i.productId !== item.productId))} className="text-slate-300 hover:text-red-500 transition-colors">
                         <Trash2 size={16} />
                       </button>
                     </td>
@@ -632,11 +658,33 @@ const DirectSaleForm: React.FC<Props> = ({ products, settings, setSettings, curr
                   />
                 </div>
               </div>
+              <div className="pt-4">
+                <label className="flex items-center gap-4 cursor-pointer group bg-white/5 p-4 rounded-2xl border border-white/10 hover:bg-white/10 transition-all">
+                  <input 
+                    type="checkbox" 
+                    className="hidden peer" 
+                    checked={!!checklistProgress['protocolo_validado']} 
+                    onChange={() => setChecklistProgress({ ...checklistProgress, 'protocolo_validado': !checklistProgress['protocolo_validado'] })} 
+                  />
+                  <div className="w-10 h-10 rounded-xl border-2 border-white/20 peer-checked:bg-emerald-500 peer-checked:border-emerald-500 flex items-center justify-center transition-all">
+                    <CheckCircle2 size={24} className={checklistProgress['protocolo_validado'] ? "text-white" : "text-white/20"} />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-black uppercase italic leading-none text-white">Validación Protocolo</p>
+                    <p className="text-[8px] font-bold text-slate-500 uppercase italic">Confirmar checklist de venta</p>
+                  </div>
+                </label>
+              </div>
             </div>
 
             <button 
               onClick={handleSubmit}
-              className="w-full bg-[#004ea1] text-white py-5 rounded-[2rem] font-black uppercase text-[11px] tracking-widest shadow-2xl hover:bg-blue-600 transition-all flex items-center justify-center gap-3 border-b-8 border-blue-900 italic"
+              disabled={!checklistProgress['protocolo_validado']}
+              className={`w-full py-5 rounded-[2rem] font-black uppercase text-[11px] tracking-widest shadow-2xl transition-all flex items-center justify-center gap-3 border-b-8 italic ${
+                checklistProgress['protocolo_validado']
+                  ? 'bg-[#004ea1] text-white border-blue-900 hover:bg-blue-600'
+                  : 'bg-slate-100 text-slate-300 border-transparent cursor-not-allowed'
+              }`}
             >
               <CheckCircle2 size={20} /> FINALIZAR VENTA DIRECTA
             </button>

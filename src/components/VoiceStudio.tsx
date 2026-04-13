@@ -1,9 +1,7 @@
 import React, { useState, useRef } from 'react';
-// CORRECCIÓN: Usar el SDK oficial para evitar errores de compilación
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { Product, AppSettings, VoiceName } from '../types';
 import { ROXTOR_SYSTEM_INSTRUCTIONS } from '../constants/systemInstructions';
-import { getGeminiApiKey } from '../utils/ai';
+import { callRoxtorAI } from '../utils/ai';
 import { 
   MessageCircle, 
   Volume2, 
@@ -83,28 +81,15 @@ const VoiceStudio: React.FC<Props> = ({ products, settings }) => {
 
   const toggleMic = async () => {
     if (isRecording) { 
-      if (sessionRef.current) sessionRef.current.close(); 
       setIsRecording(false); 
       return; 
     }
     
-    const apiKey = getGeminiApiKey();
-    if (!apiKey || apiKey === "PROTECTED_BY_ROXTOR_SERVER") {
-      alert("La API_KEY de Gemini no está disponible en el cliente por seguridad.");
-      return;
-    }
-
     setIsConnectingMic(true);
     try {
-      // CORRECCIÓN: Uso de GoogleGenerativeAI oficial
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-      
-      // Simulación de inicio de dictado (El Live API requiere configuración de WebSocket específica)
-      // Para efectos de estabilidad en tu build, usamos el flujo de audio estándar
+      // Simulación de inicio de dictado
       setIsRecording(true);
       setIsConnectingMic(false);
-      
     } catch (e) { 
       console.error(e);
       setIsConnectingMic(false); 
@@ -112,17 +97,10 @@ const VoiceStudio: React.FC<Props> = ({ products, settings }) => {
   };
 
   const generateAIBasedText = async () => {
-    const apiKey = getGeminiApiKey();
-    if (!prompt.trim() || !apiKey) return;
+    if (!prompt.trim()) return;
     setIsGeneratingText(true);
     setAudioBuffer(null);
     try {
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ 
-        model: 'gemini-1.5-flash',
-        generationConfig: { responseMimeType: "application/json" }
-      });
-
       const catalogData = products.map(p => ({ name: p.name, price: p.priceRetail, material: p.material }));
       
       const systemInstruction = `
@@ -133,22 +111,22 @@ const VoiceStudio: React.FC<Props> = ({ products, settings }) => {
         Formato JSON: { "text": "mensaje" }
       `;
 
-      const result = await model.generateContent([systemInstruction, `Dictado: "${prompt}"`]);
-      const response = await result.response;
-      const jsonResponse = JSON.parse(response.text());
-      setDraftText(jsonResponse.text || '');
+      const result = await callRoxtorAI(`Dictado: "${prompt}"`, undefined, {
+        systemInstruction,
+        module: "radar"
+      });
+
+      setDraftText(result.entities?.suggested_reply || result.suggested_reply || result.text || '');
     } catch (e) { 
       console.error(e);
     } finally { setIsGeneratingText(false); }
   };
 
   const generateAudio = async () => {
-    const apiKey = getGeminiApiKey();
-    if (!draftText.trim() || !apiKey) return;
+    if (!draftText.trim()) return;
     setIsGeneratingAudio(true);
     try {
-      // Nota: TTS en Gemini se maneja vía modelos específicos o Vertex. 
-      // Aquí ajustamos la lógica para que no rompa el despliegue.
+      // Nota: TTS en Gemini se maneja vía modelos específicos o Vertex en el backend.
       setIsGeneratingAudio(false);
     } catch (e) { 
       setIsGeneratingAudio(false); 

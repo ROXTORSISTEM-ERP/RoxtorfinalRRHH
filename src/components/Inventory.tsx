@@ -310,7 +310,7 @@ const Inventory: React.FC<Props> = ({ products, setProducts, currentStoreId, set
   };
 
   const addCostComponent = () => {
-    const newComponent = { id: `cost_${Date.now()}`, name: '', amountUsd: 0 };
+    const newComponent = { id: `cost_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`, name: '', amountUsd: 0 };
     setFormData(prev => ({
       ...prev,
       costBreakdown: [...(prev.costBreakdown || []), newComponent]
@@ -573,7 +573,7 @@ const Inventory: React.FC<Props> = ({ products, setProducts, currentStoreId, set
                   const marginWholesale = p.priceWholesale > 0 ? ((p.priceWholesale - cost) / p.priceWholesale) * 100 : 0;
 
                   return (
-                    <tr key={`${p.id}-${idx}`} className="hover:bg-blue-50/20 transition-all group">
+                    <tr key={p.id} className="hover:bg-blue-50/20 transition-all group">
                       <td className="px-10 py-5">
                         <div className="w-16 h-16 rounded-2xl bg-slate-100 border-2 border-slate-200 overflow-hidden flex items-center justify-center shadow-sm relative group/img">
                           {p.imageUrl ? (
@@ -666,7 +666,7 @@ const Inventory: React.FC<Props> = ({ products, setProducts, currentStoreId, set
                   const marginRetail = p.priceRetail > 0 ? (profitRetail / p.priceRetail) * 100 : 0;
 
                   return (
-                    <div key={`profit-${p.id}-${idx}`} className="p-6 bg-slate-50/50 border-2 border-slate-100 rounded-3xl hover:border-blue-200 transition-all group">
+                    <div key={`profit-${p.id}`} className="p-6 bg-slate-50/50 border-2 border-slate-100 rounded-3xl hover:border-blue-200 transition-all group">
                       <div className="flex items-center justify-between mb-4">
                         <div className="flex items-center gap-4">
                           <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm font-black text-[#004ea1] italic">

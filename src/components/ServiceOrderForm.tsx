@@ -33,7 +33,8 @@ import { 
   CheckSquare,
   ShieldCheck,
   Globe,
-  MessageCircle
+  MessageCircle,
+  CheckCircle2
 } from 'lucide-react';
 import { DEPARTMENT_CHECKLISTS } from './Checklists';
 
@@ -709,14 +710,26 @@ return (
               </div>
             </div>
 
-            <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-500 uppercase italic block">Método de Pago</label>
-              <select className="w-full bg-white/5 border-2 border-white/10 rounded-2xl px-5 py-4 text-white font-black text-xs outline-none uppercase italic" value={financials.paymentMethod} onChange={(e) => setFinancials({...financials, paymentMethod: e.target.value as any})}>
-                <option value="DOLARES $">DOLARES $</option>
-                <option value="PAGO MOVIL">PAGO MOVIL</option>
-                <option value="TRANSFERENCIA">TRANSFERENCIA</option>
-                <option value="EFECTIVO">EFECTIVO</option>
-              </select>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-500 uppercase italic block">Método de Pago</label>
+                <select className="w-full bg-white/5 border-2 border-white/10 rounded-2xl px-5 py-4 text-white font-black text-xs outline-none uppercase italic" value={financials.paymentMethod} onChange={(e) => setFinancials({...financials, paymentMethod: e.target.value as any})}>
+                  <option value="DOLARES $">DOLARES $</option>
+                  <option value="PAGO MOVIL">PAGO MOVIL</option>
+                  <option value="TRANSFERENCIA">TRANSFERENCIA</option>
+                  <option value="EFECTIVO">EFECTIVO</option>
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-500 uppercase italic block">Referencia de Pago</label>
+                <input 
+                  type="text" 
+                  placeholder="NRO. DE REFERENCIA"
+                  className="w-full bg-white/5 border-2 border-white/10 rounded-2xl px-5 py-4 text-white font-black text-xs outline-none uppercase italic focus:border-rose-500 transition-all" 
+                  value={financials.paymentReference} 
+                  onChange={(e) => setFinancials({...financials, paymentReference: e.target.value.toUpperCase()})} 
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -725,10 +738,26 @@ return (
       <div className="bg-white border-4 border-slate-50 rounded-[3rem] p-8 shadow-sm space-y-6">
         <SectionHeader icon={<Plus size={20} className="text-rose-600" />} title="Gestión Operativa" />
         <div className="space-y-4">
-          <select value={assignedAgentId} onChange={(e) => setAssignedAgentId(e.target.value)} className="w-full border-2 rounded-2xl px-5 py-4 text-xs font-black uppercase italic outline-none bg-slate-50 border-slate-100">
-            <option value="">-- SELECCIONAR AGENTE --</option>
-            {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-          </select>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 italic">Responsable Asignado *</label>
+              <select value={assignedAgentId} onChange={(e) => setAssignedAgentId(e.target.value)} className="w-full border-2 rounded-2xl px-5 py-4 text-xs font-black uppercase italic outline-none bg-slate-50 border-slate-100 focus:bg-white focus:border-rose-100">
+                <option value="">-- SELECCIONAR AGENTE --</option>
+                {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+              </select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 italic">Taller / Aliado (Opcional)</label>
+              <select 
+                value={assignedWorkshopIds[0] || ''} 
+                onChange={(e) => setAssignedWorkshopIds(e.target.value ? [e.target.value] : [])} 
+                className="w-full border-2 rounded-2xl px-5 py-4 text-xs font-black uppercase italic outline-none bg-slate-50 border-slate-100 focus:bg-white focus:border-blue-100"
+              >
+                <option value="">-- INTERNO / ROXTOR --</option>
+                {workshops.map(w => <option key={w.id} value={w.id}>{w.name} ({w.department})</option>)}
+              </select>
+            </div>
+          </div>
           
           <div onClick={() => imageInputRef.current?.click()} className="w-full min-h-[120px] bg-slate-50 border-4 border-dashed border-slate-200 rounded-[2.5rem] flex flex-col items-center justify-center cursor-pointer hover:bg-rose-50 transition-all p-4">
              {referenceImages.length > 0 ? (
@@ -750,7 +779,7 @@ return (
                 onChange={() => setChecklistProgress({ ...checklistProgress, 'protocolo_validado': !checklistProgress['protocolo_validado'] })} 
               />
               <div className="w-12 h-12 rounded-[1.2rem] border-2 border-slate-200 peer-checked:bg-emerald-500 peer-checked:border-emerald-500 flex items-center justify-center transition-all">
-                <ShieldCheck size={28} className={checklistProgress['protocolo_validado'] ? "text-white" : "text-slate-200"} />
+                <CheckCircle2 size={28} className={checklistProgress['protocolo_validado'] ? "text-white" : "text-slate-200"} />
               </div>
               <div>
                 <p className="text-[11px] font-black uppercase italic leading-none">Validación Protocolo</p>

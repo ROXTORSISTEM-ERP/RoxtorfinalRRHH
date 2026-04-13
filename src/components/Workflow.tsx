@@ -655,7 +655,7 @@ const sendSewingWhatsApp = async () => {
     // Aquí podrías poner una alerta para saber que falló la conexión
   }
 };
-  const filteredOrders = filterAgentId ? orders.filter(o => o.assignedAgentId === filterAgentId) : orders;
+  const filteredOrders = (filterAgentId ? orders.filter(o => o.assignedAgentId === filterAgentId) : orders).filter(o => !o.isDirectSale);
 
   const handleDeleteWorkshopReference = (orderId: string) => {
     if (!confirm("¿Eliminar imagen y notas de taller para liberar espacio?")) return;
@@ -664,7 +664,7 @@ const sendSewingWhatsApp = async () => {
 
   const ordersWithWorkshopImages = useMemo(() => orders.filter(o => o.workshopReferenceImage).length, [orders]);
 
-  const readyForDelivery = useMemo(() => orders.filter(o => o.status === 'completado' && !o.isDelivered && !o.isLogistics && (o.customerName.toLowerCase().includes(deliveryFilter.toLowerCase()) || o.orderNumber.includes(deliveryFilter))), [orders, deliveryFilter]);
+  const readyForDelivery = useMemo(() => orders.filter(o => o.status === 'completado' && !o.isDelivered && !o.isLogistics && !o.isDirectSale && (o.customerName.toLowerCase().includes(deliveryFilter.toLowerCase()) || o.orderNumber.includes(deliveryFilter))), [orders, deliveryFilter]);
 
   // Fixed: Added key property to props type to avoid TypeScript error on line 290
  const RenderColumn = ({ status, label }: { status: OrderStatus, label: string, key?: string }) => (
@@ -860,7 +860,7 @@ const sendSewingWhatsApp = async () => {
 
   // 2. Función para Notificar al Cliente
   const sendClientDelayNotification = (alert: RadarAlert) => {
-    const orderNumberMatch = alert.message.match(/#([\w-]+)/);
+    const orderNumberMatch = alert.message?.match(/#([\w-]+)/);
     const orderNumber = orderNumberMatch ? orderNumberMatch[1] : 'N/A';
     
     const rawPhone = alert.customerPhone || orders.find(o => o.orderNumber === orderNumber)?.customerPhone;
@@ -875,6 +875,36 @@ const sendSewingWhatsApp = async () => {
     const msg = `Hola ${alert.customerName?.split(' ')[0] || 'Cliente'}, te informamos que tu pedido *#${orderNumber}* presenta un ligero retraso técnico. 🦖\n\nEstamos trabajando para entregarte lo antes posible con la calidad Roxtor. ¡Gracias por tu paciencia!`;
     
     window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, '_blank');
+  };
+
+  const handleBudgetResponse = (alert: RadarAlert) => {
+    const rawPhone = alert.customerPhone;
+    if (!rawPhone) {
+      window.alert("No se encontró el teléfono del cliente.");
+      return;
+    }
+
+    const cleanPhone = rawPhone.replace(/\D/g, '');
+    const phone = cleanPhone.startsWith('58') ? cleanPhone : `58${cleanPhone}`;
+    const msg = `¡Hola ${alert.customerName?.split(' ')[0] || 'Cliente'}! 🦖 Recibimos tu solicitud de presupuesto desde nuestra web para: *${alert.description || 'tu proyecto'}*.\n\nPara darte un presupuesto exacto, ¿podrías enviarnos una imagen de referencia o decirnos las cantidades? ¡Estamos listos para crear algo increíble para ti! 🔥`;
+    
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, '_blank');
+    resolveAlert(alert.id, 'available');
+  };
+
+  const handleStatusNotification = (alert: RadarAlert) => {
+    const rawPhone = alert.customerPhone;
+    if (!rawPhone) {
+      window.alert("No se encontró el teléfono del cliente.");
+      return;
+    }
+
+    const cleanPhone = rawPhone.replace(/\D/g, '');
+    const phone = cleanPhone.startsWith('58') ? cleanPhone : `58${cleanPhone}`;
+    const msg = `¡Hola ${alert.customerName?.split(' ')[0] || 'Cliente'}! 🦖 Te escribimos de ROXTOR para notificarte sobre el estatus de tu solicitud. ¿En qué podemos ayudarte hoy? 🔥`;
+    
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, '_blank');
+    resolveAlert(alert.id, 'available');
   };
 
   return (
@@ -939,13 +969,13 @@ const sendSewingWhatsApp = async () => {
                     ) : (
                       <>
                         <button 
-                          onClick={() => resolveAlert(alert.id, 'available')} 
+                          onClick={() => handleStatusNotification(alert)} 
                           className="flex-1 md:flex-none bg-emerald-500 text-white px-4 py-2 rounded-xl font-black text-[9px] uppercase italic flex items-center justify-center gap-2 hover:bg-emerald-600 transition-all"
                         >
                           <MessageCircle size={14} /> NOTIFICAR ESTATUS
                         </button>
                         <button 
-                          onClick={() => resolveAlert(alert.id, 'taller')} 
+                          onClick={() => handleBudgetResponse(alert)} 
                           className="flex-1 md:flex-none bg-blue-500 text-white px-4 py-2 rounded-xl font-black text-[9px] uppercase italic flex items-center justify-center gap-2 hover:bg-blue-600 transition-all"
                         >
                           <DollarSign size={14} /> DAR PRESUPUESTO
@@ -1134,9 +1164,16 @@ const sendSewingWhatsApp = async () => {
             </div>
             <div className="space-y-6">
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase italic ml-1">Fase Siguiente de Producción:</label>
+                <label className="text-[10px] font-black text-slate-400 uppercase italic ml-1">Fase Siguiente de Producción (Estación):</label>
                 <select className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-5 text-xs font-black uppercase italic outline-none" value={transferData.nextStatus} onChange={(e) => setTransferData({...transferData, nextStatus: e.target.value as OrderStatus})}>
-                  <option value="pendiente">COLA DE ESPERA</option><option value="diseño">ESTACIÓN DE DISEÑO</option><option value="impresión">PLOTEO / IMPRESIÓN</option><option value="bordado">BORDADOS</option><option value="sublimación">SUBLIMACIÓN</option><option value="corte_vinil">CORTE VINIL</option><option value="planchado">PLANCHADO FINAL</option><option value="completado">MARCAR LISTO / DESPACHO</option>
+                  <option value="bordado">🧵 BORDADOS</option>
+                  <option value="sublimación">🔥 SUBLIMACIÓN</option>
+                  <option value="planchado">💨 PLANCHADO FINAL</option>
+                  <option value="diseño">🎨 ESTACIÓN DE DISEÑO</option>
+                  <option value="impresión">🖨️ PLOTEO / IMPRESIÓN</option>
+                  <option value="corte_vinil">✂️ CORTE VINIL</option>
+                  <option value="completado">✅ MARCAR LISTO / DESPACHO</option>
+                  <option value="pendiente">⏳ COLA DE ESPERA</option>
                 </select>
               </div>
               <div className="space-y-2">
@@ -1217,6 +1254,18 @@ const sendSewingWhatsApp = async () => {
                         <p className="text-[8px] font-black text-slate-400 uppercase italic mb-1">Especificaciones:</p>
                         <p className="text-[10px] font-bold text-slate-700 italic">
                           {lastWorkshopAction.action.split('Notas: ')[1]}
+                        </p>
+                      </div>
+                    )}
+
+                    {order.designSpecs && (
+                      <div className="mt-3 p-3 bg-blue-50/50 rounded-2xl border border-blue-100/50">
+                        <p className="text-[7px] font-black text-blue-600 uppercase italic mb-1">Especificaciones de Diseño:</p>
+                        <p className="text-[9px] font-bold text-slate-700 italic leading-tight">
+                          {order.designSpecs.threadOrDesignColors && `🧵 ${order.designSpecs.threadOrDesignColors} `}
+                          {order.designSpecs.position && `📍 ${order.designSpecs.position} `}
+                          {order.designSpecs.personalizationName && `👤 ${order.designSpecs.personalizationName} `}
+                          {order.designSpecs.additionalSpecs && `📝 ${order.designSpecs.additionalSpecs}`}
                         </p>
                       </div>
                     )}

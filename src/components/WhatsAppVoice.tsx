@@ -91,7 +91,7 @@ const WhatsAppVoice: React.FC<Props> = ({ products, settings }) => {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       let fullTranscript = '';
       const sessionPromise = ai.live.connect({
-        model: 'gemini-2.5-flash-native-audio-preview-12-2025',
+        model: 'gemini-1.5-pro',
         callbacks: {
           onopen: () => {
             setIsRecording(true); setIsConnectingMic(false);
@@ -140,7 +140,7 @@ const WhatsAppVoice: React.FC<Props> = ({ products, settings }) => {
       `;
 
       const result = await callRoxtorAI(prompt, undefined, {
-        model: 'gemini-3-flash-preview',
+        model: 'gemini-1.5-pro',
         systemInstruction,
         responseMimeType: 'application/json'
       });
@@ -157,7 +157,7 @@ const WhatsAppVoice: React.FC<Props> = ({ products, settings }) => {
     setIsGeneratingAudio(true);
     try {
       const result = await callRoxtorAI(`Dilo muy amable: ${draftText}`, undefined, {
-        model: "gemini-2.5-flash-preview-tts",
+        model: "gemini-1.5-pro",
         modalities: ["AUDIO"]
       });
 
@@ -220,10 +220,10 @@ const WhatsAppVoice: React.FC<Props> = ({ products, settings }) => {
               <div className="mb-6 space-y-3 relative z-10">
                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest italic ml-2">Fotos recomendadas para enviar:</p>
                  <div className="flex flex-wrap gap-2">
-                    {detectedImages.map(pid => {
+                    {detectedImages.map((pid, idx) => {
                       const p = products.find(prod => prod.id === pid);
                       return p && p.imageUrl ? (
-                        <div key={pid} className="w-20 h-20 rounded-2xl border-4 border-white shadow-lg overflow-hidden relative group">
+                        <div key={`${pid}-${idx}`} className="w-20 h-20 rounded-2xl border-4 border-white shadow-lg overflow-hidden relative group">
                            <img src={p.imageUrl} className="w-full h-full object-cover" />
                            <button onClick={() => handleShareProductImage(pid)} className="absolute inset-0 bg-[#00a884]/80 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity"><Send size={16}/></button>
                         </div>

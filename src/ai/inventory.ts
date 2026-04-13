@@ -1,61 +1,39 @@
-import { runAI } from "../utils/aiServer";
+import { runAI } from "./aiserver";
+import { ROXTOR_SYSTEM_INSTRUCTIONS } from "../constants/systemInstructions";
 
 export async function inventoryAI(data: any, image?: string) {
-  let prompt = typeof data === 'string' ? data : "";
+  try {
+    const systemPrompt = `
+      ${ROXTOR_SYSTEM_INSTRUCTIONS}
+      Eres el Especialista en INVENTARIO de ROXTOR. 
+      Tu misión es analizar documentos (PDF, Imágenes, Excel) y extraer tablas de productos, costos y stock.
+      
+      RESPONDE SIEMPRE EN ESTE FORMATO JSON:
+      {
+        "module": "inventory",
+        "action": "UPDATE_STOCK | ADD_PRODUCT | COST_ANALYSIS",
+        "extracted_data": {
+          "items": [{ "name": "string", "sku": "string", "cost": number, "price": number, "quantity": number }],
+          "supplier": "string",
+          "total_invoice": number
+        },
+        "analysis": "Breve análisis de los cambios detectados",
+        "suggested_reply": "Respuesta para el equipo de almacén"
+      }
+    `;
 
-  if (image && !prompt) {
-    prompt = `
-      ERES EL EXPERTO EN ESCANEO DE PRODUCTOS DE ROXTOR.
-      Analiza la imagen adjunta. Puede ser un producto físico, una etiqueta o una página de catálogo.
-      
-      TAREA:
-      1. Identifica el producto.
-      2. Extrae el nombre, material/tela, y precios si son visibles.
-      3. Si es un catálogo, extrae TODOS los productos visibles.
-      
-      FORMATO DE RESPUESTA (JSON):
-      {
-        "items": [
-          {
-            "name": "NOMBRE EN MAYÚSCULAS",
-            "priceRetail": 0.0,
-            "priceWholesale": 0.0,
-            "material": "TELA/MATERIAL",
-            "targetAreas": "ÁREA DE USO",
-            "additionalConsiderations": "RECARGOS O NOTAS",
-            "description": "DESCRIPCIÓN BREVE"
-          }
-        ],
-        "suggested_reply": "Resumen de lo que encontraste"
-      }
-    `;
-  } else if (!image) {
-    prompt = `
-      Actúa como sistema de INVENTARIO INTELIGENTE de ROXTOR.
-      Analiza los siguientes datos de inventario:
-      ${JSON.stringify(data)}
-      
-      Detecta:
-      - productos con bajo stock
-      - sobrestock
-      - desperdicio
-      - inconsistencias
-      
-      Sugiere:
-      - reposición
-      - ajuste de compras
-      - optimización
-      
-      Responde en JSON:
-      {
-        "low_stock": [],
-        "overstock": [],
-        "issues": [],
-        "recommendations": [],
-        "suggested_reply": "Resumen ejecutivo para la gerencia"
-      }
-    `;
+    const prompt = typeof data === 'string' ? data : "Analiza este documento de inventario o datos de stock.";
+
+    const result = await runAI(prompt, systemPrompt, image);
+
+    return result;
+
+  } catch (error: any) {
+    console.error("inventoryAI Error:", error);
+    return {
+      module: "inventory",
+      action: "ERROR",
+      suggested_reply: "Error al procesar el documento de inventario. Asegúrate de que el archivo sea legible."
+    };
   }
-
-  return await runAI(prompt, undefined, image);
 }

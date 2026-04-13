@@ -111,10 +111,10 @@ const App: React.FC = () => {
       complementaryBonusUsd: 200,
       hourlyRateUsd: 2.5,
       attendance: [
-        { id: '1', date: '2026-04-01', checkIn: Date.now(), status: 'presente', locationVerified: true, storeId: 'store_1' },
-        { id: '2', date: '2026-04-02', checkIn: Date.now(), status: 'presente', locationVerified: true, storeId: 'store_1' },
-        { id: '3', date: '2026-04-03', checkIn: Date.now(), status: 'tarde', locationVerified: true, storeId: 'store_1' },
-        { id: '4', date: '2026-04-04', checkIn: Date.now(), status: 'ausente', locationVerified: false, storeId: 'store_1' },
+        { id: 'att_ale_1', date: '2026-04-01', checkIn: Date.now(), status: 'presente', locationVerified: true, storeId: 'store_1' },
+        { id: 'att_ale_2', date: '2026-04-02', checkIn: Date.now(), status: 'presente', locationVerified: true, storeId: 'store_1' },
+        { id: 'att_ale_3', date: '2026-04-03', checkIn: Date.now(), status: 'tarde', locationVerified: true, storeId: 'store_1' },
+        { id: 'att_ale_4', date: '2026-04-04', checkIn: Date.now(), status: 'ausente', locationVerified: false, storeId: 'store_1' },
       ]
     },
     { 
@@ -130,8 +130,8 @@ const App: React.FC = () => {
       complementaryBonusUsd: 180,
       hourlyRateUsd: 2.0,
       attendance: [
-        { id: '1', date: '2026-04-01', checkIn: Date.now(), status: 'presente', locationVerified: true, storeId: 'store_1' },
-        { id: '2', date: '2026-04-02', checkIn: Date.now(), status: 'presente', locationVerified: true, storeId: 'store_1' },
+        { id: 'att_emi_1', date: '2026-04-01', checkIn: Date.now(), status: 'presente', locationVerified: true, storeId: 'store_1' },
+        { id: 'att_emi_2', date: '2026-04-02', checkIn: Date.now(), status: 'presente', locationVerified: true, storeId: 'store_1' },
       ]
     },
     { id: 'agent_web', name: 'SISTEMA WEB', role: 'VENTAS', storeId: 'store_1', pin: '999999' }
@@ -940,27 +940,15 @@ const handleManualBcvSave = async () => {
             orders={orders}
             settings={settings} 
             currentStoreId={currentStoreId} 
-            radarAlerts={radarAlerts}
-            onNewAlert={(alert) => {
-              setRadarAlerts(prev => [alert, ...prev]);
-              setTimeout(() => syncWithCloud('push'), 500);
-            }}
             onNewOrder={(o) => { 
               setOrders([o, ...orders]); 
               setTimeout(() => syncWithCloud('push'), 500); 
             }} 
-            onUpdateOrder={(o) => {
-              setOrders(orders.map(order => order.id === o.id ? o : order));
-              setTimeout(() => syncWithCloud('push'), 500);
-            }}
-            onUpdateSettings={(s) => setSettings(s)} 
             messages={messages}
             onNewMessage={(m) => setMessages(prev => {
               if (prev.find(existing => existing.id === m.id)) return prev;
               return [...prev, m];
             })}
-            currentAgentId={currentAgentId}
-            agents={agents}
           />
         )}
         {activeTab === 'erp' && (isLocked ? <PINScreen onUnlock={(pin: string) => {
@@ -1070,7 +1058,17 @@ const handleManualBcvSave = async () => {
                 {equipoSubTab === 'desempeño' && (!isLocked || agents.find(a => a.id === currentAgentId)?.role === 'GERENCIA') ? (
                   <StaffPerformance orders={orders} expenses={expenses} agents={agents} settings={settings} />
                 ) : equipoSubTab === 'academia' ? (
-                  <TrainingAcademy agents={agents} evaluations={evaluations} setEvaluations={setEvaluations} currentAgentId={currentAgentId} settings={settings} />
+                  <TrainingAcademy 
+                    agents={agents} 
+                    evaluations={evaluations} 
+                    setEvaluations={setEvaluations} 
+                    currentAgentId={currentAgentId} 
+                    settings={settings} 
+                    onUpdateAgent={(updatedAgent) => {
+                      setAgents(prev => prev.map(a => a.id === updatedAgent.id ? updatedAgent : a));
+                      setTimeout(() => syncWithCloud('push'), 500);
+                    }}
+                  />
                 ) : equipoSubTab === 'checklists' ? (
                   <Checklists />
                 ) : equipoSubTab === 'manuales' ? (
@@ -1331,7 +1329,7 @@ const PINScreen = ({ onUnlock, label, icon, onBack, isAlphanumeric = false, leng
           <>
             <div className="flex gap-5">
               {Array.from({ length }).map((_, i) => (
-                <div key={i} className={`w-4 h-4 rounded-full transition-all duration-300 ${pin.length > i ? 'bg-blue-500 scale-150 shadow-[0_0_15px_#3b82f6]' : 'bg-white/10'}`} />
+                <div key={`pin-dot-${i}`} className={`w-4 h-4 rounded-full transition-all duration-300 ${pin.length > i ? 'bg-blue-500 scale-150 shadow-[0_0_15px_#3b82f6]' : 'bg-white/10'}`} />
               ))}
             </div>
             <div className="grid grid-cols-3 gap-4 w-full">

@@ -36,6 +36,8 @@ export interface Agent {
   complementaryBonusUsd?: number;
   pieceWorkRecords?: any[];
   contractUrl?: string;
+  vacationStart?: string;
+  vacationEnd?: string;
 }
 
 export interface AttendanceRecord {

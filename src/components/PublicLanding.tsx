@@ -296,16 +296,8 @@ Detalles: ${customerForm.details}`;
             settings={settings} 
             currentStoreId={currentStoreId} 
             onNewOrder={onNewOrder} 
-            onUpdateOrder={onUpdateOrder}
-            onUpdateSettings={onUpdateSettings}
-            isPublic={true}
-            initialMessage={initialRadarMessage}
-            radarAlerts={radarAlerts}
-            onNewAlert={onNewAlert}
             messages={messages}
             onNewMessage={onNewMessage}
-            agents={agents}
-            currentAgentId={null}
           />
         </div>
       </div>
@@ -417,7 +409,8 @@ Detalles: ${customerForm.details}`;
                         </button>
                         <button 
                           onClick={() => {
-                            const text = `Hola! Este es el estatus de mi pedido ${trackingResult.orderNumber} en ROXTOR: ${trackingResult.status.toUpperCase()}. Puedes verlo aquí: ${window.location.origin}${window.location.pathname}?track=${trackingResult.orderNumber}`;
+                            const storeName = trackingResult.orderNumber.startsWith('P') ? 'Sede Principal Vista al Sol' : trackingResult.orderNumber.startsWith('C') ? 'Sede Centro San Felix' : 'nuestra tienda';
+                            const text = `¡Hola! 👋 Este es el estatus de mi pedido ${trackingResult.orderNumber} en ROXTOR: ${trackingResult.status.toUpperCase()}. 🦖\n\n📍 Debes retirar en: *${storeName}*.\n\n🔗 Puedes ver el detalle aquí: ${window.location.origin}${window.location.pathname}?track=${trackingResult.orderNumber}`;
                             window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
                           }}
                           className="p-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-all"
@@ -445,7 +438,13 @@ Detalles: ${customerForm.details}`;
                       </div>
                     </div>
 
-                    <div className="pt-4 border-t border-slate-200">
+                    <div className="pt-4 border-t border-slate-200 space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-[9px] font-black text-slate-400 uppercase italic">Tienda de Retiro</span>
+                        <span className="text-[10px] font-bold text-rose-600 uppercase italic">
+                          {trackingResult.orderNumber.startsWith('P') ? 'Vista al Sol (Principal)' : trackingResult.orderNumber.startsWith('C') ? 'Centro San Felix' : 'Por definir'}
+                        </span>
+                      </div>
                       <div className="flex justify-between items-center">
                         <span className="text-[9px] font-black text-slate-400 uppercase italic">Fecha de Entrega Estimada</span>
                         <span className="text-[10px] font-bold text-[#000814]">{trackingResult.deliveryDate}</span>
@@ -726,7 +725,7 @@ Detalles: ${customerForm.details}`;
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {(settings.landingConfig?.portfolio || portfolio).map((item: any, i: number) => (
-              <div key={i} className="group relative aspect-[3/4] rounded-[2.5rem] overflow-hidden shadow-xl">
+              <div key={`collection-${i}`} className="group relative aspect-[3/4] rounded-[2.5rem] overflow-hidden shadow-xl">
                 <img 
                   src={item.imageUrl || item.img} 
                   alt={item.title} 
@@ -863,7 +862,7 @@ Detalles: ${customerForm.details}`;
               { title: 'Disciplina', desc: 'Disciplina en cada proceso.', icon: <CheckCircle2 size={32} /> },
               { title: 'Perseverancia', desc: 'Perseverancia en cada meta.', icon: <Target size={32} /> }
             ].map((val, i) => (
-              <div key={i} className="bg-white p-8 rounded-[2.5rem] border-4 border-transparent hover:border-rose-100 transition-all group text-center space-y-6 shadow-sm hover:shadow-xl">
+              <div key={`product-${i}`} className="bg-white p-8 rounded-[2.5rem] border-4 border-transparent hover:border-rose-100 transition-all group text-center space-y-6 shadow-sm hover:shadow-xl">
                 <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center mx-auto text-slate-400 group-hover:bg-[#000814] group-hover:text-white transition-all duration-500">
                   {val.icon}
                 </div>
@@ -942,7 +941,7 @@ Detalles: ${customerForm.details}`;
               { title: 'Entrega Contra Saldo', desc: 'Despacho inmediato al completar el pago.', icon: <Truck size={24} /> },
               { title: 'Mayoristas +12', desc: 'Precios especiales a partir de 12 piezas.', icon: <Users size={24} /> }
             ].map((cond, i) => (
-              <div key={i} className="bg-white/5 backdrop-blur-xl border border-white/10 p-8 rounded-[2.5rem] space-y-6 hover:bg-white/10 transition-all">
+              <div key={`feature-${i}`} className="bg-white/5 backdrop-blur-xl border border-white/10 p-8 rounded-[2.5rem] space-y-6 hover:bg-white/10 transition-all">
                 <div className="w-12 h-12 bg-rose-600 text-white rounded-xl flex items-center justify-center shadow-lg">
                   {cond.icon}
                 </div>

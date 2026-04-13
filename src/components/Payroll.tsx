@@ -1,8 +1,13 @@
 
 import React, { useState, useMemo, useRef } from 'react';
 import { PayrollPayment, Agent, AppSettings, Order, Expense } from '../types';
-import { jsPDF } from 'jspdf';
+import { 
+  calculatePayrollDetails, 
+  getWeeklyAttendance 
+} from '../utils/payrollCalculations';
+import PayrollReceipt from './PayrollReceipt';
 import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
 import { 
   Users, 
   DollarSign, 
@@ -39,7 +44,7 @@ const Payroll: React.FC<Props> = ({ payroll, setPayroll, agents, settings, order
   const [isGeneratingReceipt, setIsGeneratingReceipt] = useState<string | null>(null);
   const receiptRef = useRef<HTMLDivElement>(null);
   const [selectedAgentForCommissions, setSelectedAgentForCommissions] = useState<string>('');
-  const [extraCommissionsList, setExtraCommissionsList] = useState<{ description: string, amount: number }[]>([]);
+  const [extraCommissionsList, setExtraCommissionsList] = useState<{ id: string, description: string, amount: number }[]>([]);
   const [newExtra, setNewExtra] = useState({ description: '', amount: 0 });
   const [newPayment, setNewPayment] = useState({
     agentId: '',
@@ -59,22 +64,6 @@ const Payroll: React.FC<Props> = ({ payroll, setPayroll, agents, settings, order
     periodStart: '',
     periodEnd: ''
   });
-
-  const getAbsences = (agent: Agent) => {
-    const attendance = agent.attendance || [];
-    const today = new Date();
-    const currentDay = today.getDate();
-    let workDays = 0;
-    for (let i = 1; i <= currentDay; i++) {
-      const d = new Date(today.getFullYear(), today.getMonth(), i);
-      if (d.getDay() !== 0) workDays++;
-    }
-    const presentDays = attendance.filter(r => {
-      const d = new Date(r.date);
-      return d.getMonth() === today.getMonth() && d.getFullYear() === today.getFullYear();
-    }).length;
-    return Math.max(0, workDays - presentDays);
-  };
 
   const calculateAgentCommissions = (agentId: string) => {
     const agentOrders = orders.filter(o => o.assignedAgentId === agentId && o.status === 'completado');
@@ -111,12 +100,12 @@ const Payroll: React.FC<Props> = ({ payroll, setPayroll, agents, settings, order
 
     const commissions = calculateAgentCommissions(agentId);
     const advances = calculateAgentAdvances(agentId);
-    const absences = getAbsences(agent);
-    const dailyRate = agent.salaryAmountUsd ? (agent.salaryType === 'semanal' ? agent.salaryAmountUsd / 6 : agent.salaryAmountUsd / 12) : 0;
-    const absencesPenalty = absences * dailyRate;
-
-    const baseSalary = agent.salaryAmountUsd || 0;
-    const total = baseSalary + commissions - advances - absencesPenalty;
+    
+    // Use new calculation logic
+    const details = calculatePayrollDetails(agent, settings, commissions);
+    
+    // Deduct advances from the net total
+    const finalAmountUsd = details.netTotalUsd - advances;
 
     setNewPayment(prev => ({
       ...prev,
@@ -124,13 +113,13 @@ const Payroll: React.FC<Props> = ({ payroll, setPayroll, agents, settings, order
       agentName: agent.name,
       agentFullName: agent.fullName || agent.name,
       agentIdNumber: agent.idNumber || '',
-      baseSalaryUsd: baseSalary,
+      baseSalaryUsd: agent.salaryAmountUsd || 0,
       commissionsUsd: commissions,
       extraBonusesUsd: 0,
       extraBonusesDescription: '',
       advancesDeductedUsd: advances,
-      absencesDeductedUsd: absencesPenalty,
-      amountUsd: Math.max(0, total)
+      absencesDeductedUsd: details.absenceDeductionBs / settings.bcvRate,
+      amountUsd: Math.max(0, finalAmountUsd)
     }));
   };
 
@@ -212,6 +201,9 @@ const Payroll: React.FC<Props> = ({ payroll, setPayroll, agents, settings, order
     setIsGeneratingReceipt(payment.id);
     
     try {
+      // Wait for React to render the component in the hidden div
+      await new Promise(resolve => setTimeout(resolve, 100));
+
       const canvas = await html2canvas(receiptRef.current, {
         scale: 2,
         useCORS: true,
@@ -219,13 +211,13 @@ const Payroll: React.FC<Props> = ({ payroll, setPayroll, agents, settings, order
       });
       
       const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const imgProps = pdf.getImageProperties(imgData);
+      // Media Carta: 139.7 x 215.9 mm
+      const pdf = new jsPDF('p', 'mm', [139.7, 215.9]);
       const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
       
       pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-      pdf.save(`Recibo_Nomina_${payment.agentName}_${payment.date}.pdf`);
+      pdf.save(`Recibo_Roxtor_${payment.agentName}_${payment.date}.pdf`);
     } catch (error) {
       console.error('Error generating receipt:', error);
     } finally {
@@ -239,126 +231,21 @@ const Payroll: React.FC<Props> = ({ payroll, setPayroll, agents, settings, order
     <div className="space-y-8 animate-in fade-in duration-500 italic pb-20">
       {/* Hidden Receipt Template for PDF Generation */}
       <div className="fixed left-[-9999px] top-[-9999px]">
-        <div ref={receiptRef} className="w-[800px] bg-white p-12 text-slate-900 font-sans">
-          <div className="flex justify-between items-start border-b-4 border-[#000814] pb-8 mb-8">
-            <div>
-              <img src={settings.logoUrl || "https://picsum.photos/seed/roxtor/200/100"} alt="Logo" className="h-20 mb-4" referrerPolicy="no-referrer" />
-              <h1 className="text-3xl font-black uppercase italic tracking-tighter">RECIBO DE PAGO DE NÓMINA</h1>
-              <p className="text-sm font-bold text-slate-500">ROXTOR PZO - Soluciones Creativas Inteligentes</p>
-              <p className="text-xs font-bold text-slate-400">RIF: {settings.fiscalData?.rif || 'J-XXXXXXXXX'}</p>
-            </div>
-            <div className="text-right">
-              <div className="bg-[#000814] text-white px-6 py-3 rounded-xl inline-block mb-2">
-                <p className="text-[10px] font-black uppercase tracking-widest">Nro. Control</p>
-                <p className="text-xl font-black italic">NOM-{isGeneratingReceipt?.slice(0, 6).toUpperCase()}</p>
-              </div>
-              <p className="text-sm font-bold">Fecha: {payroll.find(p => p.id === isGeneratingReceipt)?.date}</p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-12 mb-12">
-            <div className="space-y-4">
-              <h2 className="text-xs font-black uppercase tracking-widest text-slate-400 border-b pb-2">DATOS DEL COLABORADOR</h2>
-              <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase">Nombre Completo</p>
-                <p className="text-lg font-black uppercase italic">{payroll.find(p => p.id === isGeneratingReceipt)?.agentFullName}</p>
-              </div>
-              <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase">Cédula / ID</p>
-                <p className="text-lg font-black uppercase italic">{payroll.find(p => p.id === isGeneratingReceipt)?.agentIdNumber || 'S/N'}</p>
-              </div>
-              <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase">Apodo Operativo</p>
-                <p className="text-sm font-black uppercase italic">{payroll.find(p => p.id === isGeneratingReceipt)?.agentName}</p>
-              </div>
-            </div>
-            <div className="space-y-4">
-              <h2 className="text-xs font-black uppercase tracking-widest text-slate-400 border-b pb-2">DETALLES DEL PAGO</h2>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-[10px] font-bold text-slate-400 uppercase">Método</p>
-                  <p className="text-sm font-black uppercase italic">{payroll.find(p => p.id === isGeneratingReceipt)?.method}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] font-bold text-slate-400 uppercase">Referencia</p>
-                  <p className="text-sm font-black uppercase italic">{payroll.find(p => p.id === isGeneratingReceipt)?.reference || 'S/N'}</p>
-                </div>
-              </div>
-              <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase">Tasa BCV</p>
-                <p className="text-sm font-black uppercase italic">Bs. {payroll.find(p => p.id === isGeneratingReceipt)?.bcvRate.toFixed(2)}</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-slate-50 rounded-3xl p-8 mb-12">
-            <table className="w-full">
-              <thead>
-                <tr className="text-[10px] font-black uppercase tracking-widest text-slate-400 border-b border-slate-200">
-                  <th className="text-left pb-4">CONCEPTO</th>
-                  <th className="text-right pb-4">ASIGNACIONES (+)</th>
-                  <th className="text-right pb-4">DEDUCCIONES (-)</th>
-                </tr>
-              </thead>
-              <tbody className="text-sm font-bold">
-                <tr className="border-b border-slate-100">
-                  <td className="py-4 uppercase italic">Sueldo Base / Monto Fijo</td>
-                  <td className="py-4 text-right">${payroll.find(p => p.id === isGeneratingReceipt)?.baseSalaryUsd?.toFixed(2) || '0.00'}</td>
-                  <td className="py-4 text-right">-</td>
-                </tr>
-                <tr className="border-b border-slate-100">
-                  <td className="py-4 uppercase italic">Comisiones por Bordado/Ventas</td>
-                  <td className="py-4 text-right">${payroll.find(p => p.id === isGeneratingReceipt)?.commissionsUsd?.toFixed(2) || '0.00'}</td>
-                  <td className="py-4 text-right">-</td>
-                </tr>
-                {payroll.find(p => p.id === isGeneratingReceipt)?.extraBonusesUsd ? (
-                  <tr className="border-b border-slate-100">
-                    <td className="py-4 uppercase italic">
-                      Bonificaciones / Extras
-                      <p className="text-[8px] text-slate-400 normal-case">{payroll.find(p => p.id === isGeneratingReceipt)?.extraBonusesDescription}</p>
-                    </td>
-                    <td className="py-4 text-right">${payroll.find(p => p.id === isGeneratingReceipt)?.extraBonusesUsd?.toFixed(2)}</td>
-                    <td className="py-4 text-right">-</td>
-                  </tr>
-                ) : null}
-                <tr className="border-b border-slate-100">
-                  <td className="py-4 uppercase italic">Anticipos Recibidos</td>
-                  <td className="py-4 text-right">-</td>
-                  <td className="py-4 text-right text-rose-600">-${payroll.find(p => p.id === isGeneratingReceipt)?.advancesDeductedUsd?.toFixed(2) || '0.00'}</td>
-                </tr>
-                <tr className="border-b border-slate-100">
-                  <td className="py-4 uppercase italic">Deducción por Ausencias</td>
-                  <td className="py-4 text-right">-</td>
-                  <td className="py-4 text-right text-rose-600">-${payroll.find(p => p.id === isGeneratingReceipt)?.absencesDeductedUsd?.toFixed(2) || '0.00'}</td>
-                </tr>
-              </tbody>
-              <tfoot>
-                <tr className="text-lg font-black uppercase italic">
-                  <td className="pt-8">TOTAL NETO A PAGAR</td>
-                  <td colSpan={2} className="pt-8 text-right text-[#004ea1]">${payroll.find(p => p.id === isGeneratingReceipt)?.amountUsd.toFixed(2)}</td>
-                </tr>
-                <tr className="text-sm font-black uppercase italic text-slate-400">
-                  <td>TOTAL EN BOLÍVARES (BCV)</td>
-                  <td colSpan={2} className="text-right">Bs. {payroll.find(p => p.id === isGeneratingReceipt)?.amountBs.toLocaleString('es-VE')}</td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-
-          <div className="grid grid-cols-2 gap-20 pt-20">
-            <div className="border-t-2 border-slate-200 pt-4 text-center">
-              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Firma Colaborador</p>
-              <p className="text-xs font-bold mt-2">{payroll.find(p => p.id === isGeneratingReceipt)?.agentFullName}</p>
-            </div>
-            <div className="border-t-2 border-slate-200 pt-4 text-center">
-              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Firma Gerencia / Roxtor PZO</p>
-              <p className="text-xs font-bold mt-2">Sello Autorizado</p>
-            </div>
-          </div>
-
-          <div className="mt-20 text-center">
-            <p className="text-[8px] font-black uppercase tracking-[0.5em] text-slate-300">Roxtor PZO: Soluciones Creativas Inteligentes</p>
-          </div>
+        <div ref={receiptRef}>
+          {isGeneratingReceipt && (() => {
+            const payment = payroll.find(p => p.id === isGeneratingReceipt);
+            const agent = agents.find(a => a.id === payment?.agentId);
+            if (!payment || !agent) return null;
+            return (
+              <PayrollReceipt 
+                agent={agent} 
+                settings={settings} 
+                commissionsUsd={(payment.commissionsUsd || 0) + (payment.extraBonusesUsd || 0)}
+                paymentReference={payment.reference}
+                isPrinting={true}
+              />
+            );
+          })()}
         </div>
       </div>
 
@@ -420,7 +307,7 @@ const Payroll: React.FC<Props> = ({ payroll, setPayroll, agents, settings, order
                     <button 
                       onClick={() => {
                         if (newExtra.description && newExtra.amount > 0) {
-                          setExtraCommissionsList([...extraCommissionsList, newExtra]);
+                          setExtraCommissionsList([...extraCommissionsList, { ...newExtra, id: Math.random().toString(36).substr(2, 9) }]);
                           setNewExtra({ description: '', amount: 0 });
                         }
                       }}
@@ -432,12 +319,12 @@ const Payroll: React.FC<Props> = ({ payroll, setPayroll, agents, settings, order
 
                   {extraCommissionsList.length > 0 && (
                     <div className="space-y-2 pt-2 border-t border-white/5">
-                      {extraCommissionsList.map((extra, idx) => (
-                        <div key={idx} className="flex justify-between items-center bg-white/5 p-2 rounded-lg">
+                      {extraCommissionsList.map((extra) => (
+                        <div key={extra.id} className="flex justify-between items-center bg-white/5 p-2 rounded-lg">
                           <div className="text-[9px] font-bold uppercase truncate max-w-[150px]">{extra.description}</div>
                           <div className="flex items-center gap-2">
                             <span className="text-[10px] font-black text-emerald-400">${extra.amount.toFixed(2)}</span>
-                            <button onClick={() => setExtraCommissionsList(extraCommissionsList.filter((_, i) => i !== idx))} className="text-white/20 hover:text-rose-400"><Trash2 size={12}/></button>
+                            <button onClick={() => setExtraCommissionsList(extraCommissionsList.filter((e) => e.id !== extra.id))} className="text-white/20 hover:text-rose-400"><Trash2 size={12}/></button>
                           </div>
                         </div>
                       ))}
