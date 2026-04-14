@@ -164,16 +164,14 @@ async function startServer() {
     }
   });
 
-  // ✅ CORREGIDO PARA NETLIFY Y EXPRESS 5
-  // En Netlify, no servimos archivos estáticos desde Express, Netlify lo hace.
+ // ✅ CORRECCIÓN FINAL PARA ROXTOR (COMPATIBLE CON PATH-TO-REGEXP V8)
   if (!process.env.NETLIFY && !process.env.VERCEL) {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
 
-    // Catch-all para SPA en desarrollo local
-    // En Express 5, '*' es literal. Usamos un parámetro con nombre para el comodín.
-    app.get("/:any*", (req, res) => {
-      // Si la ruta no empieza por /api, servimos el index.html
+    // Usamos '*' sin paréntesis o ':path*' para capturar todo
+    app.get("*", (req, res) => {
+      // Si la ruta no es de la API, servimos el frontend
       if (!req.path.startsWith("/api")) {
         res.sendFile(path.join(distPath, "index.html"));
       } else {
