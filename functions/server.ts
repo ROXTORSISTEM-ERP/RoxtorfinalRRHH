@@ -164,14 +164,13 @@ async function startServer() {
     }
   });
 
- // ✅ CORRECCIÓN FINAL PARA ROXTOR (COMPATIBLE CON PATH-TO-REGEXP V8)
+ // ✅ SOLUCIÓN FINAL (PARA PATH-TO-REGEXP V8+)
   if (!process.env.NETLIFY && !process.env.VERCEL) {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
 
-    // Usamos '*' sin paréntesis o ':path*' para capturar todo
-    app.get("*", (req, res) => {
-      // Si la ruta no es de la API, servimos el frontend
+    // Cambiamos '*' por '/:splat*' que es lo que Netlify entiende mejor
+    app.get("/:splat*", (req, res) => {
       if (!req.path.startsWith("/api")) {
         res.sendFile(path.join(distPath, "index.html"));
       } else {
