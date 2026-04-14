@@ -2,7 +2,6 @@ import express from "express";
 import path from "path";
 import dotenv from "dotenv";
 import serverless from "serverless-http";
-import fetch from "node-fetch";
 
 // 🔥 IA MODULAR
 import { radarAI } from "./src/ai/radar";
@@ -170,7 +169,7 @@ async function startServer() {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
 
-    app.get("*", (req, res) => {
+    app.get("(.*)", (req, res) => {
       res.sendFile(path.join(distPath, "index.html"));
     });
   }
@@ -180,8 +179,12 @@ async function startServer() {
 
 // 🔥 SERVERLESS EXPORT CORRECTO
 const appPromise = startServer();
+let serverlessHandler: any;
 
-export const handler = serverless(async (event, context) => {
-  const app = await appPromise;
-  return app(event, context);
-});
+export const handler = async (event: any, context: any) => {
+  if (!serverlessHandler) {
+    const app = await appPromise;
+    serverlessHandler = serverless(app);
+  }
+  return serverlessHandler(event, context);
+};
