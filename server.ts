@@ -164,28 +164,58 @@ async function startServer() {
     }
   });
 
- // ✅ CORREGIDO: Uso de comodín compatible con versiones modernas
-  if (!process.env.NETLIFY) {
+  // ✅ CORREGIDO PARA NETLIFY Y EXPRESS 5
+  // En Netlify, no servimos archivos estáticos desde Express, Netlify lo hace.
+  if (!process.env.NETLIFY && !process.env.VERCEL) {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
 
-    // Cambiamos "(.*)" por "*" que es el estándar actual
-    app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
+    // Catch-all para SPA en desarrollo local
+    // En Express 5, '*' es literal. Usamos un parámetro con nombre para el comodín.
+    app.get("/:any*", (req, res) => {
+      // Si la ruta no empieza por /api, servimos el index.html
+      if (!req.path.startsWith("/api")) {
+        res.sendFile(path.join(distPath, "index.html"));
+      } else {
+        res.status(404).json({ error: "API endpoint not found" });
+      }
     });
   }
 
   return app;
 }
 
-// 🔥 SERVERLESS EXPORT CORRECTO
-const appPromise = startServer();
+// 🔥 SERVERLESS EXPORT CON MANEJO DE ERRORES
+const appPromise = startServer().catch(err => {
+  console.error("Fallo crítico al iniciar el servidor:", err);
+  return null;
+});
+
 let serverlessHandler: any;
 
 export const handler = async (event: any, context: any) => {
-  if (!serverlessHandler) {
+  try {
     const app = await appPromise;
-    serverlessHandler = serverless(app);
+    if (!app) {
+      return {
+        statusCode: 500,
+        body: JSON.stringify({ error: "Servidor no inicializado correctamente" })
+      };
+    }
+    
+    if (!serverlessHandler) {
+      serverlessHandler = serverless(app);
+    }
+    
+    return await serverlessHandler(event, context);
+  } catch (error: any) {
+    console.error("Error en el handler de Netlify:", error);
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ 
+        error: "Error interno en la función de Netlify",
+        details: error.message 
+      })
+    };
   }
-  return serverlessHandler(event, context);
 };
