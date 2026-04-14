@@ -164,12 +164,13 @@ async function startServer() {
     }
   });
 
-  // ❌ IMPORTANTE: NO servir frontend en Netlify
+ // ✅ CORREGIDO: Uso de comodín compatible con versiones modernas
   if (!process.env.NETLIFY) {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
 
-    app.get("(.*)", (req, res) => {
+    // Cambiamos "(.*)" por "*" que es el estándar actual
+    app.get("*", (req, res) => {
       res.sendFile(path.join(distPath, "index.html"));
     });
   }
